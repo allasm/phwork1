@@ -233,11 +233,12 @@ DrawGraph.prototype = {
         var noChangeIterations = 0;
         var maxNoC = 0;
 
-        var best          = order.copy();
-        var bestCrossings = this.edge_crossing(best);
+        var best                = order.copy();
+        var bestCrossings       = this.edge_crossing(best);
+        var bestEdgeLengthScore = this.edge_length_score(best);
 
         for (var i = 0; i < maxOrderingIterations; i++) {
-            if (bestCrossings == 0) break;
+            //if (bestCrossings == 0) break;   // still want to optimize for edge lengths
 
             // try to optimize based on a heuristic: just do it without checking if the result
             // is good or not. The layout may be not as good rigth away but better after a few
@@ -249,10 +250,17 @@ DrawGraph.prototype = {
 
             var numCrossings = this.edge_crossing(order);
 
-            if (numCrossings < bestCrossings) {
-                best          = order.copy();
-                bestCrossings = numCrossings;
-                noChangeIterations = 0;
+            var edgeLengthScore = this.edge_length_score(order);
+
+            console.log("=== EdgeLengthScore: " + edgeLengthScore );
+
+            if (numCrossings < bestCrossings ||
+                (numCrossings == bestCrossings && edgeLengthScore < bestEdgeLengthScore )
+               ) {
+                best                = order.copy();
+                bestCrossings       = numCrossings;
+                bestEdgeLengthScore = edgeLengthScore;
+                noChangeIterations  = 0;
             }
             else {
                 noChangeIterations++;
@@ -263,9 +271,11 @@ DrawGraph.prototype = {
             }
         }
 
+        // [TODO] probably not needed for pedigrees, as an outlier long edge is less
+        //        important than good layout for most other nodes
         // try to optimize long edge placement (as above, bad adjustments are discarded)
         // (as a side-effect numCrossings is computed and is returned)
-        bestCrossings = this.transposeLongEdges(best, bestCrossings);
+        //bestCrossings = this.transposeLongEdges(best, bestCrossings);
 
         console.log("=== Numcrossings: " + bestCrossings + ", maxNoChangeIterations: " + maxNoC );
 
@@ -323,6 +333,43 @@ DrawGraph.prototype = {
         o.init(order, vOrder);
 
         return o;
+    },
+
+    edge_length_score: function(order, onlyRank)
+    {
+        var totalEdgeLengthInPositions = 0;
+
+        // try to place people in a relationship close to each other
+        for (var i = 0; i < this.GG.getNumVertices(); i++) {
+
+            if (onlyRank) {
+                var rank = this.ranks[i];
+                if (rank < onlyRank - 1 || rank > onlyRank + 1) continue;
+            }
+
+            if (this.GG.isRelationship(i)) {			    
+    		    var parents = this.GG.getInEdges(i);
+			
+                // each "relationship" node should only have two "parent" nodes
+        	    if (parents.length != 2) {
+                    throw "Assertion failed: 2 parents per relationship";
+                }
+
+                // only if parents have the same rank
+                if ( this.ranks[parents[0]] != this.ranks[parents[1]] )
+    			    continue;
+					
+                var order1 = order.vOrder[parents[0]];
+                var order2 = order.vOrder[parents[1]];
+
+                var minOrder = Math.min(order1, order2);
+                var maxOrder = Math.max(order1, order2);
+
+                totalEdgeLengthInPositions += ( maxOrder - minOrder );
+            }
+        }
+        
+        return totalEdgeLengthInPositions;
     },
 
     edge_crossing: function(order, onlyRank)
@@ -531,8 +578,6 @@ DrawGraph.prototype = {
         //                repeats for each rank, and if there was an improvementg tries again.
         var improved = true;
 
-        var numEdgeCrossings = this.edge_crossing(order);
-
         var numPasses = 0;     // [TODO] not sure if termination is guaranteed, so added an
                                //        iteration cap just in case. To verify if necessary.
 
@@ -544,6 +589,7 @@ DrawGraph.prototype = {
             for (var r = 0; r <= this.maxRank; r++)
             {
                 var numEdgeCrossings = this.edge_crossing(order, r);
+                var edgeLengthScore  = this.edge_length_score(order, r);
 
                 var maxIndex = order.order[r].length - 1;
                 for (var i = 0; i < maxIndex; i++) {
@@ -551,12 +597,14 @@ DrawGraph.prototype = {
                     order.exchange(r, i, i+1);
 
                     var newEdgeCrossings = this.edge_crossing(order, r);
+                    var newLengthScore   = this.edge_length_score(order, r);
 
-                    if (newEdgeCrossings < numEdgeCrossings) {
+                    if (newEdgeCrossings < numEdgeCrossings ||
+                        (newEdgeCrossings == numEdgeCrossings && newLengthScore < edgeLengthScore) ) {
                         // this was a good exchange, apply it to the current real ordering
                         improved = true;
                         numEdgeCrossings = newEdgeCrossings;
-                        if (numEdgeCrossings == 0) return 0;
+                        //if (numEdgeCrossings == 0) return 0; // still want to optimize for edge lengths
                     }
                     else {
                         // exchange back
@@ -818,13 +866,15 @@ DrawGraph.prototype = {
         this.try_shift_right(xcoord, false, true, true);
         this.try_shift_left (xcoord, true);
 
-        //this.displayGraph(xcoord.xcoord, 'firstAdj');
+        this.displayGraph(xcoord.xcoord, 'firstAdj');
 
         for ( var i = 0; i <= this.maxXcoordIterations; i++ )
         {
             this.try_shift_right(xcoord, true, true, true);
             this.try_shift_left (xcoord, true);
             //this.try_shift_long_edges(xcoord);
+
+            this.displayGraph(xcoord.xcoord, 'Adj' + i);
 
             // [TODO] not clear how and hard to implement sugested heuristics.
             //        The paper suggests to do a network simplex anyway instead, but it is
