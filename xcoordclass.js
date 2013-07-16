@@ -96,7 +96,7 @@ XCoord.prototype = {
 
     normalize: function() {
         // finds the smallest margin on the left and shifts the entire graph to the left
-        var minExtra = this.xcoord[0];
+        var minExtra = this.xcoord[0] - this.halfWidth[0];
         for (var i = 1; i < this.xcoord.length; i++) {
             if (this.xcoord[i] < minExtra)
                 minExtra = (this.xcoord[i] - this.halfWidth[i]);

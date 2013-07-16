@@ -1,5 +1,9 @@
-<html>
+<!DOCTYPE html>
+<html lang="en-US">
 <head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta content="utf-8" http-equiv="encoding">
+
     <script type="text/javascript" src="libs/ext-debug.js"></script>
     <script type="text/javascript" src="libs/raphael.js"></script>
 
@@ -13,16 +17,15 @@
 <body>
     <script type="text/javascript">
         Ext.onReady( function(){
-            //console.log('zzz');
 
             var inputG = [
-                { name : 'root', outedges: [ {to: 'f1'}, {to: 'm1'}, {to: 'f2'}, {to: 'm2'} ], width: 10 },
                 { name :'f1', outedges: [ {to: 'p1'} ], width: 20 },
                 { name :'m1', outedges: [ {to: 'p1'} ], width: 20 },
                 { name :'p1',  outedges: [ {to: 'chhub1'} ], width: 10 },
                 { name :'chhub1', outedges: [ {to: 'ch1'},{to: 'ch2'},{to: 'ch3'} ], width: 10 },
                 { name :'f2', outedges: [ {to: 'p2'} ], width: 20 },
                 { name :'m2', outedges: [ {to: 'p2'} ], width: 20 },
+                { name :'m3', width: 20 },
                 { name :'p2',  outedges: [ {to: 'chhub2'} ], width: 10 },
                 { name :'chhub2', outedges: [ {to: 'ch4'},{to: 'ch5'} ], width: 10 },
                 { name :'ch1', outedges: [ {to: 'p3'} ], width: 20 },
@@ -39,7 +42,7 @@
 
             var G = new InternalGraph();
 
-            G.init_from_user_graph(inputG, 'root', 10);
+            G.init_from_user_graph(inputG, 10);
 
             display_raw_graph(G, 'input');
 

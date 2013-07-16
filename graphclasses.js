@@ -34,7 +34,11 @@ InternalGraph.prototype = {
         { name :'h', width: 10 }
     ];
     */
-    init_from_user_graph: function(inputG, rootName, defaultNodeWidth) {
+    init_from_user_graph: function(inputG, defaultNodeWidth) {
+
+        this._addVertex( "virtual_root", null, defaultNodeWidth );
+        this.root = this.getVertexIdByName("virtual_root");
+
         for (var v = 0; v < inputG.length; v++) {
             var width = inputG[v].hasOwnProperty('width') ?
                         inputG[v].width :
@@ -57,16 +61,24 @@ InternalGraph.prototype = {
 
                     var targetID   = this.getVertexIdByName( targetName );
 
-                    this._addEdge( v, targetID, weight );
+                    this._addEdge( vID, targetID, weight );
                 }
             }
         }
+        
+        // for all vertices without an in-edge and add an in-edge from virtual_root
+        for (var v = 0; v < inputG.length; v++) {
+            vid = this.getVertexIdByName( inputG[v].name );
 
-        this.numRealVertices = this.v.length;
+            if ( this.getInEdges(vid).length == 0 ) {
+                //console.log("=== adding edge to virtual parent: " + this.root + " -> " + vid);
+                this._addEdge( this.root, vid, 7 );
+            }
+        }
+
+        this.numRealVertices = this.v.length;    // used during later stages to separate real vertices from virtual-multi-rank-edge-breaking ones
 
         this.defaultNodeWidth = defaultNodeWidth;
-
-        this.root = this.getVertexIdByName(rootName);
 
         this.findCyclesAndMarkCycleBreakingEdges();
 
@@ -103,7 +115,7 @@ InternalGraph.prototype = {
 
         // go over all original edges:
         // - if edge conects vertices with adjacent ranks just add it
-        // - else create a series of virtual vertices and add them and new virtual edges
+        // - else create a series of virtual vertices and edges and add them together
         for (var sourceV = 0; sourceV < this.v.length; sourceV++) {
 
             var sourceRank = ranks[sourceV];
@@ -353,6 +365,27 @@ InternalGraph.prototype = {
 
     getInEdges: function(v) {
         return this.inedges[v];
+    },
+
+    getAllEdgesWithWeights: function(v) {
+        var edgeToWeight = {};
+        
+        var outEdges = this.getOutEdges(v);
+        for (var i = 0; i < outEdges.length; i++) {
+            var u = outEdges[i];
+            edgeToWeight[u] = this.weights[v][u];
+        }
+
+        var inEdges = this.getInEdges(v);
+        for (var i = 0; i < inEdges.length; i++) {
+            var u = inEdges[i];
+            if (edgeToWeight.hasOwnProperty(u))
+                edgeToWeight[u] += this.weights[u][v];
+            else
+                edgeToWeight[u] = this.weights[u][v];
+        }
+
+        return edgeToWeight;
     },
 
     isCycleEdge: function(fromV, toV) {

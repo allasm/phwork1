@@ -25,8 +25,9 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
 
     if (debugMsg) canvas.text(50,10,debugMsg);
 
-    // r starts at 1 to ignore the virtual root
-    for ( var r = 1; r < ordering.order.length; r++ ) {
+    for ( var r = 0; r < ordering.order.length; r++ ) {
+
+        if ( G.root == r ) continue;       // ignore the virtual root
 
         var len = ordering.order[r].length;
         for ( var i = 0; i < len; i++ ) {
