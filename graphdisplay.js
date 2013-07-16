@@ -1,10 +1,11 @@
 function display_raw_graph(G, renderTo) {
     printObject(G);
-    Ext.fly(renderTo).update( '<pre>'+
-                              'vertices:   ' + stringifyObject(G.nameToId)+'\n'+
-                              'edgesFromV: ' + stringifyObject(G.v)+'\n'+
-                              'weights:    ' + stringifyObject(G.weights) + '\n' +
-                              'widths:     ' + stringifyObject(G.vWidth) + '\n</pre>' );
+    document.getElementById(renderTo).innerHTML =
+        '<pre>'+
+        'vertices:   ' + stringifyObject(G.nameToId)+'\n'+
+        'edgesFromV: ' + stringifyObject(G.v)+'\n'+
+        'weights:    ' + stringifyObject(G.weights) + '\n' +
+        'widths:     ' + stringifyObject(G.vWidth) + '\n</pre>';
 }
 
 
