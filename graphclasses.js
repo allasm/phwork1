@@ -9,7 +9,7 @@ InternalGraph = function() {
     this.idToName = [];
     this.nameToId = {};
 
-    this.root = undefined;
+    this.parentlessNodes = [];
     this.numRealVertices = 0;
 
     this.vWidth = [];
@@ -32,9 +32,6 @@ InternalGraph.prototype = {
     ];
     */
     init_from_user_graph: function(inputG, defaultNodeWidth) {
-
-        this._addVertex( "virtual_root", null, defaultNodeWidth );
-        this.root = this.getVertexIdByName("virtual_root");
 
         for (var v = 0; v < inputG.length; v++) {
             var width = inputG[v].hasOwnProperty('width') ?
@@ -63,13 +60,12 @@ InternalGraph.prototype = {
             }
         }
         
-        // for all vertices without an in-edge and add an in-edge from virtual_root
+        // find all vertices without an in-edge
         for (var v = 0; v < inputG.length; v++) {
             vid = this.getVertexIdByName( inputG[v].name );
 
             if ( this.getInEdges(vid).length == 0 ) {
-                //console.log("=== adding edge to virtual parent: " + this.root + " -> " + vid);
-                this._addEdge( this.root, vid, 7 );
+                this.parentlessNodes.push(vid);
             }
         }
 
@@ -100,8 +96,6 @@ InternalGraph.prototype = {
         newG.numRealVertices = this.numRealVertices;
 
         newG.defaultNodeWidth = virtualNodeWidth;
-
-        newG.root = this.root;
 
         // add all original vertices
         for (var i = 0; i < this.idToName.length; i++) {
@@ -154,43 +148,13 @@ InternalGraph.prototype = {
             }
         }
 
-        newG.validate();
+        newG.parentlessNodes = this.parentlessNodes;
 
-        //newG.findAllEdgesBetweenRanks(ranks, maxRank);
+        newG.validate();
 
         return newG;
     },
-
-    /*
-    findAllEdgesBetweenRanks: function(ranks, maxRank)
-    {
-        // precompute for speed
-        this.edgesBetweenRankAndBelow = [];
-
-        for (var r = 0; r < maxRank; r++) {
-            this.edgesBetweenRankAndBelow[r] = [];
-        }
-
-        for (var v = 0; v < this.v.length; v++) {
-            var outEdges = this.getOutEdges(v);
-
-            for (var i = 0; i < outEdges.length; i++) {
-                var u = outEdges[i];
-
-                if (v == u) continue;
-
-                if (ranks[v] == ranks[u]) throw "Assertion failure";
-
-                if (ranks[v]<ranks[u])
-                    this.edgesBetweenRankAndBelow[ranks[v]].push( [v,u] );
-                else
-                    this.edgesBetweenRankAndBelow[ranks[u]].push( [u,v] );
-            }
-        }
-    },
-    */
-    //-------------------------[construction for ordering]--
-
+    //--------------------------[construction for ordering]-
 
     // id: optional. If not given next available is used.
     _addVertex: function(name, id, width) {
@@ -228,7 +192,7 @@ InternalGraph.prototype = {
     },
 
     unplugVirtualVertex: function(v) {
-        // disconnectes virtual node from parent/child so thatg it is easy to recycle/remove later
+        // disconnectes virtual node from parent/child so that it is easy to recycle/remove later
         if (v <= this.getMaxRealVertexId())
             throw "Attempting to unplug a non-virtual vertex";
 
@@ -251,10 +215,7 @@ InternalGraph.prototype = {
     },
 
     validate: function() {
-        for (var v = 0; v < this.inedges.length; v++) {
-            if (v!=this.root && this.inedges[v].length == 0)
-                throw "Non-root vertex [" + v + "], name=" + this.getVertexNameById(v) + " has no in-edges";
-        }
+        // TODO
     },
 
     getVertexIdByName: function(name) {
@@ -327,7 +288,13 @@ InternalGraph.prototype = {
     },
 	
 	isRelationship: function(v) {
+        // TODO
 	    return (this.getVertexNameById(v).charAt(0) == 'p');
+	},
+
+	isChildhub: function(v) {
+        // TODO
+	    return (this.getVertexNameById(v).charAt(0) == 'c');
 	}
 
 };
@@ -336,7 +303,6 @@ InternalGraph.prototype = {
 //==================================================================================================
 
 RankedSpanningTree = function() {
-    this.root    = undefined;
     this.maxRank = undefined;
 
     this.edges  = [];         // similar to G.v - list of list of edges: [ [...], [...] ]
@@ -355,8 +321,6 @@ RankedSpanningTree.prototype = {
         //   As nodes are taken off the queue, they are assigned the least rank
         //   that satisfies their in-edges, and their out-edges are marked as scanned.
 
-        this.root = G.root;
-
         this.maxRank = initRank;
 
         var numScanedInEdges = [];
@@ -369,8 +333,8 @@ RankedSpanningTree.prototype = {
         }
 
         var queue = new Queue();
-        queue.push( this.root );   // [TODO] for generic graph handling scan all edges and add all
-                                   //        with no in-edges to the queue (but: probably easier to add virtual root)
+        for (var i = 0; i < G.parentlessNodes.length; i++ )
+            queue.push( G.parentlessNodes[i] );
 
         while ( queue.size() > 0 ) {
             var nextParent = queue.pop();
