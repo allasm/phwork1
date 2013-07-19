@@ -18,7 +18,7 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
     var ordering  = renderPackage.ordering;
     var positions = renderPackage.positions;
 
-    var canvas = Raphael(renderTo, 3000, 1500);
+    var canvas = Raphael(renderTo, 3000, 1200);
 
     var xScale = 6.0;
 
@@ -26,13 +26,14 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
 
     if (debugMsg) canvas.text(50,10,debugMsg);
 
-    for ( var r = 0; r < ordering.order.length; r++ ) {
-
-        if ( G.root == r ) continue;       // ignore the virtual root
+    // rank 0 has virtual root and removed virtual nodes
+    for ( var r = 1; r < ordering.order.length; r++ ) {
 
         var len = ordering.order[r].length;
         for ( var i = 0; i < len; i++ ) {
             var v = ordering.order[r][i];
+
+            if (v > G.getMaxRealVertexId()) continue;
 
             var topY   = curY;
             var leftX  = positions[v] - G.getVertexHalfWidth(v);
@@ -42,13 +43,7 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
                 var box = canvas.rect( 5 + leftX * xScale, topY, G.getVertexWidth(v) * xScale, 30 );
                 box.attr({fill: "#ccc"});
             }
-            else {
-                //var box = canvas.rect( 5 + leftX * xScale, topY, G.getVertexWidth(v) * xScale, 30 );
-                //box.attr({fill: "#eee", "stroke": "#ddd"});
-            }
-
-            if (v > G.getMaxRealVertexId()) continue;
-
+            
             var midX = 5 + leftX * xScale + (G.getVertexWidth(v) * xScale)/2;
 
             if ( v <= G.getMaxRealVertexId() || debugPrint )
@@ -103,6 +98,7 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
                         line.attr({"stroke":"#000"});
                     }
                     else {
+                        // the entire long edge is handled here so that it is easie rot replace by splines or something else later on
                         var yy      = topY + 30;
                         var targetY = topY + 50;
                         var prevX   = midX;
@@ -111,17 +107,38 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
                             var leftTargetX = positions[u] - G.getVertexHalfWidth(u);
                             var midTargetX  = 5 + leftTargetX * xScale + (G.getVertexWidth(u) * xScale)/2;
 
-                            var line = canvas.path("M " + (prevX) + " " + yy + " L " + (midTargetX) +
-                                                   " " + targetY);
-                            line.attr({"stroke":"#000"});
-
                             if (u > G.getMaxRealVertexId()) {
-                                var line = canvas.path("M " + (midTargetX) + " " + targetY + " L " + (midTargetX) +
-                                                       " " + (targetY+30));
+                                var line = canvas.path("M " + (prevX) + " " + yy + " L " + (midTargetX) +
+                                                       " " + targetY);
                                 line.attr({"stroke":"#000"});
-                            }
 
-                            if (u <= G.getMaxRealVertexId()) break;
+                                if (G.getOutEdges(u)[0] > G.getMaxRealVertexId() ) {
+                                    // draw a line across the node itself (instead of a box as for real nodes)
+                                    var line2 = canvas.path("M " + (midTargetX) + " " + targetY + " L " + (midTargetX) +
+                                                           " " + (targetY+30));
+                                    line2.attr({"stroke":"#000"});
+                                }
+                                else { yy -= 30; }
+                            }
+                            else {
+                                var leftTargetX  = positions[u] - G.getVertexHalfWidth(u);
+                                var rightTargetX = positions[u] + G.getVertexHalfWidth(u);
+                                var midTargetX  = 5 + leftTargetX * xScale + (G.getVertexWidth(u) * xScale)/2;
+                                // final piece - this one goes across to the right or to the left (since multi-rank edges only connect relationship nodes)
+                                // note: only possible with "relationship" nodes on the same rank
+                                if ( ordering.vOrder[u] < ordering.vOrder[v] ) {   // edge to the left
+                                    var line = canvas.path("M " + prevX + " " + (yy) + " L " + (5+rightTargetX*xScale) + " " + (yy + 15));
+                                    line.attr({"stroke":"#000"});                    
+                                }
+                                else                                               // edge to the right
+                                {
+                                    var line = canvas.path("M " + prevX + " " + (yy) + " L " + (5+leftTargetX*xScale) + " " + (yy + 15));
+                                    line.attr({"stroke":"#000"});                                        
+                                }
+                                break;
+                            }
+                            
+                            v = u;
                             u = G.getOutEdges(u)[0];
 
                             yy      += 50;
