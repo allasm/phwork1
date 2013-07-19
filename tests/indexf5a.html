@@ -15,8 +15,11 @@
     <script type="text/javascript">
         function showGraph()
         {
-            // TESTCASE5A: a graph with two mid-level parentless nodes which should
-            //             be ranked on the same level with their partners. Half of testcase 5b
+            // TESTCASE5A: a graph with two mid-level parentless nodes which should be
+            //             ranked on the same level with their partners. Children should
+            //             be placed next to each other, when possible:
+            //             e.g. {m33, m34, f31} or {f31, m34, m33} but not {m33, f31, m34}
+            //             (testcase 5b includes this entire pedigree as a subset)
 
             var inputG = [
                 { name :'m12', outedges: [ {to: 'p2'} ], width: 20 },
