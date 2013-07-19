@@ -91,7 +91,7 @@ DrawGraph.prototype = {
     {
         var spanTree = new RankedSpanningTree();
 
-        spanTree.initTreeByInEdgeScanning(this.G, 0);
+        spanTree.initTreeByInEdgeScanning(this.G, 1);
 
         return spanTree;
     },
@@ -132,7 +132,6 @@ DrawGraph.prototype = {
 
             var maxComponentColor = 0;
             for (var v = 0; v < this.G.getNumVertices(); v++) {
-                if (v == this.G.root) continue;
 
                 if (nodeColor[v] == null) {
                     // mark all reachable using non-multi-rank edges with the same color (ignore edge direction)
@@ -153,7 +152,6 @@ DrawGraph.prototype = {
                         var inEdges = this.G.getInEdges(nextV);
                         for (var i = 0; i < inEdges.length; i++) {
                             var vv         = inEdges[i];
-                            if (vv == this.G.root) continue;
                             var weight     = this.G.getEdgeWeight(vv,nextV);
                             var edgeLength = rankV - ranks[vv];
                             // we want to avoid counting long edges within a component, so do not
@@ -250,7 +248,7 @@ DrawGraph.prototype = {
         var bestCrossings       = Infinity;
         var bestEdgeLengthScore = Infinity;
 
-        var numTopLevelNodes = this.GG.getNumOutEdges( this.GG.root );
+        var numTopLevelNodes = this.GG.parentlessNodes.length;
         for (var i = 0; i < numTopLevelNodes * maxInitOrderingIters; i++ ) {
             order = this.init_order();
 
@@ -352,7 +350,18 @@ DrawGraph.prototype = {
         // Use BFS -----------------------------
         var queue = new Queue();
 
-        queue.push( this.GG.root );
+            /* TODO
+            if ( rank == 0 ) {
+                shuffleArray(outEdges);
+                // TODO: save permutations, do not redo already tried orders
+                // for consistency, of the two mirrored assignments pick the one with highest Id on the right
+                // e.g. given [3,1,2] use equivalent [2,1,3] instead
+                if ( outEdges[0] > outEdges[outEdges.length-1] )
+                    outEdges.reverse();
+            }*/
+
+        for (var i = 0; i < this.GG.parentlessNodes.length; i++ )
+            queue.push( this.GG.parentlessNodes[i] );
 
         while ( queue.size() > 0 ) {
             var next = queue.pop();
@@ -368,16 +377,6 @@ DrawGraph.prototype = {
 
             // add all children to the queue
             var outEdges = this.GG.getOutEdges(next);
-
-            
-            if ( rank == 0 ) {
-                shuffleArray(outEdges);
-                // TODO: save permutations, do not redo already tried orders
-                // for consistency, of the two mirrored assignments pick the one with highest Id on the right
-                // e.g. given [3,1,2] use equivalent [2,1,3] instead
-                if ( outEdges[0] > outEdges[outEdges.length-1] )
-                    outEdges.reverse();
-            }
 
             for (var u = 0; u < outEdges.length; u++) {
                 var vertex = outEdges[u];
@@ -396,8 +395,11 @@ DrawGraph.prototype = {
     edge_length_score: function(order, onlyRank)
     {
         var totalEdgeLengthInPositions = 0;
+        var totalEdgeLengthInChildren  = 0;
 
-        // try to place people in a relationship close to each other
+        // Two goals: without increasin ght enumber of edge crossings try to
+        //   higher priority: place people in a relationship close(r) to each other
+        //   lower priority:  place all children close(r) to each other
         for (var i = 0; i < this.GG.getNumVertices(); i++) {
 
             if (onlyRank) {
@@ -425,9 +427,22 @@ DrawGraph.prototype = {
 
                 totalEdgeLengthInPositions += ( maxOrder - minOrder );
             }
-        }
+
+            if (this.GG.isChildhub(i)) {
+                // get the distance between the rightmost and leftmost child
+                var children = this.GG.getOutEdges(i);
+                var minOrder = order.vOrder[children[0]];
+                var maxOrder = minOrder;
+                for (var j = 1; j < children.length; j++) {
+                    var ord = order.vOrder[children[j]];
+                    if ( ord > maxOrder ) maxOrder = ord;
+                    if ( ord < minOrder ) minOrder = ord;                    
+                }
+                totalEdgeLengthInChildren += (maxOrder - minOrder);
+            }
+        }        
         
-        return totalEdgeLengthInPositions;
+        return totalEdgeLengthInPositions*1000 + totalEdgeLengthInChildren;
     },
 
     edge_crossing: function(order, onlyRank)
@@ -736,7 +751,7 @@ DrawGraph.prototype = {
             var bestOrder = undefined;
 
             // move 2 pieces at a time rigth or left first, up to 5 spots
-            if (chain.length <= 5) {
+            if (chain.length <= 6) {
                 for (var i = 0; i < chain.length; i++) {
                     var piece1 = chain[i];
                     var piece2;
@@ -750,8 +765,8 @@ DrawGraph.prototype = {
                     var ord1  = order.vOrder[piece1];
                     var ord2  = order.vOrder[piece2];
 
-                    for (var move1 = -5; move1 <= 5; move1++ ) {
-                        for (var move2 = -5; move2 <= 5; move2++ ) {
+                    for (var move1 = -4; move1 <= 4; move1++ ) {
+                        for (var move2 = -4; move2 <= 4; move2++ ) {
                             if (move1 == 0 && move2 == 0) continue;
                             var newOrder = order.copy();
                             if (!newOrder.move(rank1, ord1, move1)) continue;
@@ -1096,7 +1111,7 @@ DrawGraph.prototype = {
             else
                 r = rr;
 
-            if (r == 0) continue;  // disregard all discarded vertices & virtual root
+            if (r == 0) continue;  // disregard all discarded vertices
 
             var considerBelow = scoreQualityOfNodesBelow || (r == 0);
             var considerAbove = (scoreQualityOfNodesAbove || r == this.maxRank) && (r != 0);
@@ -1188,7 +1203,7 @@ DrawGraph.prototype = {
 
         for (var u in allEdgesWithWeights) {
             if (allEdgesWithWeights.hasOwnProperty(u)) {
-                if (u == v || u == this.root) continue;
+                if (u == v) continue;
                 var weight = allEdgesWithWeights[u];
 
                 // determine edge type: from real vertex to real, real to/from virtual or v. to v.
