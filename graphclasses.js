@@ -311,6 +311,28 @@ InternalGraph.prototype = {
         this.weights[fromV][toV] = weight;
     },
 
+    unplugVirtualVertex: function(v) {
+        // disconnectes virtual node from parent/child so thatg it is easy to recycle/remove later
+        if (v <= this.getMaxRealVertexId())
+            throw "Attempting to unplug a non-virtual vertex";
+
+        // virtiual nodes guaranteed to have only one in and one out edge
+        var parent = this.inedges[v][0];
+        var child  = this.v[v][0];
+       
+        // replace outgoing edge for parent from V to child
+        var idx1 = this.v[parent].indexOf(v);
+        this.v[parent][idx1] = child;        
+        // replace incoming edge for child from V to parent
+        var idx2 = this.inedges[child].indexOf(v);
+        this.inedges[child][idx2] = parent;
+
+        this.weights[parent][child] = this.weights[parent][v];
+
+        this.v[v] = [];
+        this.inedges[v] = [];
+        this.weights[v] = {};
+    },
 
     validate: function() {
         for (var v = 0; v < this.inedges.length; v++) {
@@ -355,12 +377,12 @@ InternalGraph.prototype = {
         return this.numRealVertices - 1; // vertices with IDs less than this are guaranteed to be "real"
     },
 
-    getAllEdgesBetweenRankAndBelow: function(r) {
-        return this.edgesBetweenRankAndBelow[r];
-    },
-
     getOutEdges: function(v) {
         return this.v[v];
+    },
+
+    getNumOutEdges: function(v) {
+        return this.v[v].length;
     },
 
     getInEdges: function(v) {
@@ -440,7 +462,7 @@ RankedSpanningTree.prototype = {
 
         var queue = new Queue();
         queue.push( this.root );   // [TODO] for generic graph handling scan all edges and add all
-                                   //        with no in-edges to the queue
+                                   //        with no in-edges to the queue (but: probably easier to add virtual root)
 
         while ( queue.size() > 0 ) {
             var nextParent = queue.pop();
@@ -495,57 +517,7 @@ RankedSpanningTree.prototype = {
     getMaxRank: function() {
         return this.maxRank;
     }
-
-    /* possibly needed for network simplex
-    exchange: function(edgeToRemove, edgeToAdd) {
-        // need to recompute all ranks.
-        // Take arbitrary root and walk the tree from it in all directions
-        // (both in and out). Some ranks may be negative
-    },
-
-    getAllEdges: function() {
-        //return E = [{v1,v2},{u1,u2},...]
-    },
-
-    getComponentsIfEIsRemoved: function (e) {     // e={from,to}
-        //return { head: {....}, tail: {...} }
-    }
-    */
 };
-
-
-//==================================================================================================
-
-      /*
-      // PRIM's algorithm for a graph spanning tree
-      // (see CLR, "Prim's algorithm", p.570. Most efficient when PriorityQueue
-      //  is implemented using Fibonacci Heaps, see CLR, p.573)
-
-      var root     = this.G.root;
-      var spanTree = new SpanningTree( root, this.G );
-
-      var queue = MinPriorityQueue();
-      queue.init(this.G.getNumVertices(), Infinity);
-      queue.setKey( root, 0 );
-
-      while ( queue.size() > 0 ) {
-
-        var nextU = queue.extractMin();
-
-        var edges = this.G.getOutEdges( nextU );  // only using edges in their original direction.
-                                                  // For a spanning tree over underlying undirected
-                                                  // graph need to use both out- and in-edges
-
-        for (var v = 0; v < edges.length; v++) {
-            var w_u_v = this.G.getEdgeWeight(u,v);
-            if ( queue.contains(v) && w_u_v < queue.currentValue(v) ) {
-                spanTree.setParent( v, u );
-                queue.setKey(v, w_u_v);
-            }
-        }
-      }
-      */
-
 
 //==================================================================================================
 
@@ -674,6 +646,10 @@ Score.prototype = {
             if (this.numStraightLong == otherScore.numStraightLong) {
                 // if score is the same the arrangements with smaller sum of
                 // longest in-edges wins
+                if (this.inEdgeMaxLen.length == 0 || otherScore.inEdgeMaxLen.length == 0 ) {
+                    printObject(this);
+                    printObject(otherScore);
+                }
                 return (this.inEdgeMaxLen.reduce(function(a,b){return a+b;}) <
                         otherScore.inEdgeMaxLen.reduce(function(a,b){return a+b;}));
             }
@@ -689,4 +665,25 @@ _copy2DArray = function(from, to) {
     for (var i = 0; i < from.length; i++) {
         to.push(from[i].slice(0));
     }
+}
+
+
+
+function shuffleArray (array) {
+    // Using Fisher-Yates Shuffle algorithm
+
+    var counter = array.length, temp, index;
+
+    // While there are elements in the array
+    while (counter > 0) {
+        // Pick a random index
+        index = (Math.random() * counter--) | 0;
+
+        // And swap the last element with it
+        temp = array[counter];
+        array[counter] = array[index];
+        array[index] = temp;
+    }
+
+    return array;
 }
