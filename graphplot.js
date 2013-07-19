@@ -2,20 +2,21 @@
 
 DrawGraph = function(internalG)
 {
-    this.G  = internalG;       // real graph
-    this.GG = undefined;       // graph with multi-rank edges replaced by virtual vertices/edges
+    this.G  = internalG;         // real graph
+    this.GG = undefined;         // graph with multi-rank edges replaced by virtual vertices/edges
 
-    this.ranks     = undefined;
-    this.maxRank   = undefined;
-    this.order     = undefined;
+    this.ranks     = undefined;  // array: index = vertex id, value = rank
+    this.maxRank   = undefined;  // int:   max rank in the above array (maintained for performance reasons)
+    this.order     = undefined;  // class: Ordering
     this.positions = undefined;
 };
 
 DrawGraph.prototype = {
 
+    maxInitOrderingIters:  10,          // as a mutiple of top level nodes
     maxOrderingIterations: 24,
     maxXcoordIterations:   8,
-    xCoordWeights:         [1, 2, 8],   // see xcoord_score()
+    xCoordWeights:         [1, 2, 8],   // see xcoord_score(); edges[real-real,real-virt,virt-virt]
     xCoordEdgeWeightValue: true,        // see xcoord_score()
     mostCompact:           false,
 
@@ -23,10 +24,12 @@ DrawGraph.prototype = {
                     virtualNodeWidth,              // mandatory argument
                     mostCompact,                   // mandatory argument
                     xcoordEdgeWeightValue,         // optional
+                    maxInitOrderingIters,          // optional
                     maxOrderingIterations,         // optional
                     maxXcoordIterations,           // optional
                     xcoordWeights )                // optional
     {
+        if (maxInitOrderingIters)  this.maxInitOrderingIterss = maxInitOrderingIters;
         if (maxOrderingIterations) this.maxOrderingIterations = maxOrderingIterations;
         if (maxXcoordIterations)   this.maxXcoordIterations   = maxXcoordIterations;
         if (xcoordWeights)         this.xCoordWeights         = xcoordWeights;
@@ -45,11 +48,16 @@ DrawGraph.prototype = {
 
         printObject( this.GG );
 
-        this.order = this.ordering(maxOrderingIterations);
+        this.order = this.ordering(this.maxInitOrderingIters, this.maxOrderingIterations);
 		
-		// 2.5
-		// re-rank relationship nodes based on parents being next to each other (& re-order)
-        this.reRank();
+		// 2.5)
+        this.reRankRelationships(); // once ordering is known need to re-rank relationship nodes to be on
+                                    // the same level as the lower ranked parent. Attempt to place next to
+                                    // one of the parents; having ordering info helps to pick the parent in
+                                    // case parents are on the same level and not next to each other
+
+        printObject( this.GG );
+        printObject( this.ranks );
 
         // 3)
         this.positions = this.position(horizontalSeparationDist);
@@ -66,176 +74,208 @@ DrawGraph.prototype = {
     //=[rank]============================================================================
     rank: function ()
     {
-        var rankedSpanningTree = this.feasible_tree();
+        var rankedSpanningTree = this.init_rank();
 
-        /*
-        // this part tries to minimize weight(e) * length(e) - only makes sense when weights are set
+        var ranks   = rankedSpanningTree.getRanks();
+        var maxRank = rankedSpanningTree.getMaxRank();
 
-        var cut_values = this.init_cutvalues(rankedSpanningTree);
+        // re-rank all nodes as far down the tree as possible (e.g. people with no
+        // parents in the tree should be on the same level as their first documented
+        // relationship partner)
+        maxRank = this.compress_ranks(ranks, maxRank);
 
-        while ( (e = this.leave_edge(cut_values)) != null )
-        {
-            var f = this.enter_edge(e, cut_values, rankedSpanningTree);
-
-            rankedSpanningTree.exchange( e, f );
-        }
-
-        // final improvements
-
-        this.normalize( spanningTree );   // normalize to 0-N (if not already)
-
-        this.balance( spanningTree );     // put nodes which can have many good ranks on a rank
-                                          // with least noides to to minimize width
-        */
-
-        return { ranks:   rankedSpanningTree.getRanks(),
-                 maxRank: rankedSpanningTree.getMaxRank() };
-    },
-
-    //-[feasible tree]-------------------------------------------------------------------
-    feasible_tree: function ()
-    {
-        // A feasible ranking is one satisfying constraints length(e) ≥ minlength(e) for all e.
-
-        spanTree = this.init_rank();
-
-        /*
-        // Note: the part below is only necessary when minlength(e) can be above 1
-        while ( tight_tree() <  V )
-        {
-            e = a non-tree edge incident on the tree with a minimal amount of slack;
-
-            delta = slack(e);
-            if ( incident node is e.head )
-                delta = -delta;
-
-            for ( v in Tree )
-                v.rank = v.rank + delta;
-        }
-        */
-
-        return spanTree;
+        return { ranks: ranks, maxRank: maxRank };
     },
 
     init_rank: function ()
     {
-        // An initial feasible ranking is computed.
-
-        // [From the paper]
-        //
-        //   A graph must be acyclic to have a consistent rank assignment: a preprocessing step
-        //   detects cycles and breaks them by reversing certain edges [RDM]. Using ~DFS.
-        //   We implemented a heuristic to reverse edges that participate in many cycles?
-        //
-        //   Our version keeps nodes in a queue. Nodes are placed in the queue when they have no
-        //   unscanned in-edges. As nodes are taken off the queue, they are assigned the least rank
-        //   that satisfies their in-edges, and their out-edges are marked as scanned.
-        //   In the simplest case, where weight(e) = 1 for all edges, this corresponds to viewing
-        //   the graph as a poset and assigning the minimal elements to rank 0. These nodes are
-        //   removed from the poset and the new set of minimal elements are assigned rank 1, etc.
-
-        // [Algorithm implemented here] - BFS
         var spanTree = new RankedSpanningTree();
 
-        // spanTree.initTreeByBFS(this.G, 0);
         spanTree.initTreeByInEdgeScanning(this.G, 0);
 
         return spanTree;
     },
 
-    tight_tree: function ()
+    compress_ranks: function (ranks, maxRank)
     {
-      // tight_tree finds a maximal tree of tight edges containing some fixed node and returns the
-      // number of nodes in the tree. Note that such a maximal tree is just a spanning tree for the
-      // subgraph induced by all nodes reachable from the fixed node in the underlying undirected
-      // graph using only tight edges. In particular, all such trees have the same number of nodes.
+        // re-ranks all nodes as far down the tree as possible (e.g. people with no
+        // parents in the tree should be on the same level as their first documented
+        // relationship partner)
 
-      // ... spanning tree using only tight edges: similar to init_rank
-      // ... or just check if there is an edge with above 0 slack?
-    },
-    //-------------------------------------------------------------------[feasible tree]-
+        // Algorithm:
+        // 1. find disconnected components when multi-rank edges are removed (using "flood fill")
+        // 2. for each component find the incoming or outgoing milti-rank edge of minimum length
+        //    note1: sometimes a component may have both incoming and outgoing muti-rank edges;
+        //           only one of those can be shortened and the choice is made based on edge weight
+        //    note2: we can only keep track of outgoing edges as for each incoming edge there is an
+        //           outgoing edge in another component, and we only use one edge per re-ranking iteration
+        // 3. reduce all ranks by that edge's length minus 1
+        // 4. once any two components are merged need to redo the entire process because the new
+        //    resuting component may have other minimum in/out multi-rnak edges
 
-    /*
-    init_cutvalues: function( rankedSpanningTree )
-    {
-      // Given a feasible spanning tree, we can associate an integer cut value with each tree edge:
-      // if the tree edge is deleted, the tree breaks into two connected components, the tail
-      // component containing the tail node of the edge, and the head component containing the head
-      // node. The cut value is defined as the sum of the weights of all edges from the tail
-      // component to the head component, including the tree edge, minus the sum of the weights of
-      // all edges from the head component to the tail component.
-      //
-      // init_cutvalues() - computes the cut values of the tree edges. For each tree edge, this is
-      // computed by marking the nodes as belonging to the head or tail component, and then
-      // performing the sum of the signed weights of all edges whose head and tail are in different
-      // components, the sign being negative for edges going from the head to the tail component.
+        console.log("Re-ranking ranks before: " + stringifyObject(ranks));
 
-      ...draft:
-      var E = rankedSpanningTree.getAllEdges();
+        while(true) {
+            var nodeColor        = [];   // for each node which component it belongs to
+            var component        = [];   // for each component list of vertices in the component
+            var minOutEdgeLength = [];   // for each component length of the shortest outgoing multi-rank edge
+            var minOutEdgeWeight = [];   // for each component weight of the shortest outgoing multi-rank edge
 
-      // complexity: straightforward: O(N^2)
-      for each e in E
-        var headTail = rankedSpanningTree.getComponentsIfEIsRemoved( e )
-
-        for (each ee in original_graph)
-            if (ee.from in head && ee.to in tail) {
-               add (weight(ee) * length(ee)) to e's cut value
-            }
-            else if (ee.from in tail && ee.to in head) {
-               subtract (weight(ee) * length(ee)) from e's cut value
+            for (var v = 0; v < this.G.getNumVertices(); v++) {
+                nodeColor.push(null);
+                // we don't know how many components we'll get, when initializing
+                // assume as many as there are nodes:
+                component.push([]);
+                minOutEdgeLength.push(Infinity);
+                minOutEdgeWeight.push(0);
             }
 
-       return cut_values
+            var maxComponentColor = 0;
+            for (var v = 0; v < this.G.getNumVertices(); v++) {
+                if (v == this.G.root) continue;
+
+                if (nodeColor[v] == null) {
+                    // mark all reachable using non-multi-rank edges with the same color (ignore edge direction)
+
+                    var queue = new Queue();
+                    queue.push( v );
+
+                    while ( queue.size() > 0 ) {
+                        var nextV = queue.pop();
+                        //console.log("processing: " + nextV);
+                        if (nodeColor[nextV] != null) continue;
+
+                        nodeColor[nextV] = maxComponentColor;
+                        component[maxComponentColor].push(nextV);
+
+                        var rankV = ranks[nextV];
+
+                        var inEdges = this.G.getInEdges(nextV);
+                        for (var i = 0; i < inEdges.length; i++) {
+                            var vv         = inEdges[i];
+                            if (vv == this.G.root) continue;
+                            var weight     = this.G.getEdgeWeight(vv,nextV);
+                            var edgeLength = rankV - ranks[vv];
+                            // we want to avoid counting long edges within a component, so do not
+                            // count edges goign to nodes in unknown components. Thus we may have to
+                            // use inedges to count outedges, since when processing at least one of the
+                            // two directions both nodes would be already coloured
+                            if (edgeLength > 1) {
+                                if (nodeColor[vv] != null && nodeColor[vv] != maxComponentColor) {
+                                    if (edgeLength < minOutEdgeLength[nodeColor[vv]] ||
+                                        (edgeLength == minOutEdgeLength[nodeColor[vv]] && weight > minOutEdgeWeight[nodeColor[vv]])) {
+                                        minOutEdgeLength[nodeColor[vv]] = edgeLength;
+                                        minOutEdgeWeight[nodeColor[vv]] = weight;
+                                    }
+                                }
+                            }
+                            else {
+                                if (nodeColor[vv] == null)
+                                {
+                                    queue.push(vv);
+                                    //console.log("add-I + " + nextV + " <- " + vv);
+                                }
+                            }
+                        }
+
+                        var outEdges = this.G.getOutEdges(nextV);
+                        for (var u = 0; u < outEdges.length; u++) {
+                            var vv         = outEdges[u];
+                            var weight     = this.G.getEdgeWeight(nextV,vv);
+                            var edgeLength = ranks[vv] - rankV;
+                            if (edgeLength > 1) {
+                                if ( nodeColor[vv] != null && nodeColor[vv] != maxComponentColor) {
+                                    if (edgeLength < minOutEdgeLength[maxComponentColor] ||
+                                        (edgeLength == minOutEdgeLength[maxComponentColor] && weight > minOutEdgeWeight[maxComponentColor])) {
+                                        minOutEdgeLength[maxComponentColor] = edgeLength;
+                                        minOutEdgeWeight[maxComponentColor] = weight;
+                                    }
+                                }
+                            }
+                            else {
+                                if (nodeColor[vv] == null) {
+                                    queue.push(vv);
+                                    //console.log("add-O + " + nextV + " -> " + vv);
+                                }
+                            }
+                        }
+                    }
+
+                    maxComponentColor++;
+                }
+            }
+            
+
+            console.log("components: " + stringifyObject(component));
+            if (maxComponentColor == 1) return maxRank; // only one component left - done re-ranking
+
+            // for each component we should either increase the rank (to shorten out edges) or
+            // decrease it (to shorten in-edges. If only in- (or only out-) edges are present there
+            // is no choice, if there are both pick the direction where minimum length edge has higher
+            // weight (TODO: alternatively can pick the one which reduces total edge len*weight more,
+            // but the way pedigrees are entered by the user the two methods are probably equivalent in practice)
+
+            // However we do not want negative ranks, and we can accomodate this by always increasing
+            // the rank (as for each decrease there is an equivalent increase in the other component).
+
+            // so we find the heaviest out edge and increase the rank of the source component
+            // in case of a tie we find the shortest of the heaviest edges
+
+            var minComponent = 0;
+            for (var i = 1; i < maxComponentColor; i++) {
+              if (minOutEdgeWeight[i] > minOutEdgeWeight[minComponent] ||
+                  (minOutEdgeWeight[i] == minOutEdgeWeight[minComponent] && 
+                   minOutEdgeLength[i] <  minOutEdgeLength[minComponent]) )
+                minComponent = i;
+            }
+
+            //console.log("MinLen: " + stringifyObject(minOutEdgeLength));
+
+            // reduce rank of all nodes in component "minComponent" by minEdgeLength[minComponent] - 1
+            for (var v = 0; v < component[minComponent].length; v++) {
+                ranks[component[minComponent][v]] += (minOutEdgeLength[minComponent] - 1);
+                if ( ranks[component[minComponent][v]] > maxRank )
+                    maxRank = ranks[component[minComponent][v]];
+            }
+
+            console.log("Re-ranking ranks update: " + stringifyObject(ranks));
+        }
     },
-
-    leave_edge: function (cut_values)
-    {
-      // Returns a tree edge with a negative cut value, or nil if there is none.
-      // Use values compute by init_cutvalues ()
-
-      // ...[EASY]
-      // ...go over cut_values array, looking for neg values. Return nil if non found
-      //    or the one with greatest abs value
-    },
-
-    enter_edge: function ()
-    {
-      // finds a non-tree edge to replace e. This is done by breaking the edge e, which divides the
-      // tree into a head and tail component. All edges going from the head component to the tail
-      // are considered, with an edge of min slack being chosen. This is necessary to maintain
-      // feasibility.
-      // [??? EASY]
-    },
-
-    normalize: function ()
-    {
-      // The solution is normalized by setting the least rank to zero.
-      // [EASY]
-    },
-
-    balance: function ()
-    {
-      // Nodes having equal in- and out-edge weights and multiple feasble ranks are moved to a
-      // feasible rank with the fewest nodes. The purpose is to reduce crowding and improve the
-      // aspect ratio of the drawing. The adjustment does not change the cost of the rank
-      // assignment. Nodes are adjusted in a greedy fashion, which works sufficiently well.
-      // [??? CAN SKIP?]
-    },*/
-
     //============================================================================[rank]=
 
     //=[ordering]========================================================================
-    ordering: function(maxOrderingIterations)
-    {
-        var order = this.init_order();
+    ordering: function(maxInitOrderingIters, maxOrderingIterations)
+    {        
+        var best                = [];
+        var bestCrossings       = Infinity;
+        var bestEdgeLengthScore = Infinity;
+
+        var numTopLevelNodes = this.GG.getNumOutEdges( this.GG.root );
+        for (var i = 0; i < numTopLevelNodes * maxInitOrderingIters; i++ ) {
+            order = this.init_order();
+
+            this.transpose(order, 0);
+
+            var numCrossings    = this.edge_crossing(order);
+            var edgeLengthScore = this.edge_length_score(order);
+
+            if ( numCrossings < bestCrossings ||
+                 (numCrossings == bestCrossings && edgeLengthScore < bestEdgeLengthScore) ) {
+                best                = order.copy();
+                bestCrossings       = numCrossings;
+                bestEdgeLengthScore = edgeLengthScore;                
+            }
+        }
+
         //printObject(order);
+        //return order;
 
         var noChangeIterations = 0;
         var maxNoC = 0;
 
-        var best                = order.copy();
-        var bestCrossings       = this.edge_crossing(best);
-        var bestEdgeLengthScore = this.edge_length_score(best);
+        var order = best.copy();
+        console.log("best: " + _printObjectInternal(order.order, 0));
+        console.log("num crossings: " + bestCrossings);
 
         for (var i = 0; i < maxOrderingIterations; i++) {
             //if (bestCrossings == 0) break;   // still want to optimize for edge lengths
@@ -245,18 +285,26 @@ DrawGraph.prototype = {
             // iterations
             this.wmedian(order, i);
 
+            //console.log("median: " + _printObjectInternal(order.order, 0));
+
             // try to optimize checking if each step is useful (bad adjustments are discarded);
-            this.transpose(order, maxOrderingIterations);
+            this.transpose(order, i);
+
+            //console.log("transpose: " + _printObjectInternal(order.order, 0));
 
             var numCrossings = this.edge_crossing(order);
 
+            //console.log("num crossings: " + numCrossings);
+
             var edgeLengthScore = this.edge_length_score(order);
 
-            console.log("=== EdgeLengthScore: " + edgeLengthScore );
+            //console.log("=== EdgeLengthScore: " + edgeLengthScore );
 
-            if (numCrossings < bestCrossings ||
-                (numCrossings == bestCrossings && edgeLengthScore < bestEdgeLengthScore )
-               ) {
+            if ( numCrossings < bestCrossings ||
+                 (numCrossings == bestCrossings && edgeLengthScore < bestEdgeLengthScore) )
+            {
+                console.log("best selected!");
+
                 best                = order.copy();
                 bestCrossings       = numCrossings;
                 bestEdgeLengthScore = edgeLengthScore;
@@ -271,8 +319,8 @@ DrawGraph.prototype = {
             }
         }
 
-        // [TODO] probably not needed for pedigrees, as an outlier long edge is less
-        //        important than good layout for most other nodes
+        // [TODO] probably not needed for pedigrees, as edges more than 2-3 nodes long are highly unlkikely
+         //       and good layout for other nodes is more important
         // try to optimize long edge placement (as above, bad adjustments are discarded)
         // (as a side-effect numCrossings is computed and is returned)
         //bestCrossings = this.transposeLongEdges(best, bestCrossings);
@@ -294,7 +342,7 @@ DrawGraph.prototype = {
         var vOrder     = [];          // array - for each v vOrder[v] = order within rank
 
         for (var r = 0; r <= this.maxRank; r++) {
-            order[r]      = [];
+            order[r] = [];
         }
 
         for (var i = 0; i < this.GG.getNumVertices(); i++) {
@@ -320,6 +368,16 @@ DrawGraph.prototype = {
 
             // add all children to the queue
             var outEdges = this.GG.getOutEdges(next);
+
+            
+            if ( rank == 0 ) {
+                shuffleArray(outEdges);
+                // TODO: save permutations, do not redo already tried orders
+                // for consistency, of the two mirrored assignments pick the one with highest Id on the right
+                // e.g. given [3,1,2] use equivalent [2,1,3] instead
+                if ( outEdges[0] > outEdges[outEdges.length-1] )
+                    outEdges.reverse();
+            }
 
             for (var u = 0; u < outEdges.length; u++) {
                 var vertex = outEdges[u];
@@ -374,6 +432,7 @@ DrawGraph.prototype = {
 
     edge_crossing: function(order, onlyRank)
     {
+        // TODO: optimize. In pedigrees edges always flow from higher ranks to lower ranks
         var numCrossings = 0;
 
         var vertNum = this.GG.getNumVertices();
@@ -487,7 +546,7 @@ DrawGraph.prototype = {
 
         if (iter%2 == 0)
         {
-            for (var r = 1; r <= this.maxRank; r++) {
+            for (var r = 2; r <= this.maxRank; r++) {
                 if (order.order[r].length   <= 1 ||            // no need to re-order 1 vertex
                     order.order[r-1].length <= 1) continue;    // if only one same parent for all V:
                                                                // all V will have equivalen median[]
@@ -502,7 +561,7 @@ DrawGraph.prototype = {
         }
         else
         {
-            for (var r = this.maxRank-1; r >= 0; r--) {
+            for (var r = this.maxRank-1; r >= 1; r--) {
                 if (order.order[r].length   <= 1 ||            // no need to re-order 1 vertex
                     order.order[r+1].length <= 1) continue;    // if only one same child for all V
 
@@ -571,25 +630,21 @@ DrawGraph.prototype = {
     },
     //-------------------------------------------------------------------------[wmedian]-
 
-    transpose: function(order, maxIterations)
+    transpose: function(order, iter)
     {
         // for each rank: goes over all vertices in the rank and tries to switch orders of two
         //                adjacent vertices. If numCrossings is improved keeps the new order.
         //                repeats for each rank, and if there was an improvementg tries again.
         var improved = true;
 
-        var numPasses = 0;     // [TODO] not sure if termination is guaranteed, so added an
-                               //        iteration cap just in case. To verify if necessary.
-
-        while( improved && numPasses < maxIterations )
+        while( improved )
         {
-            numPasses++;
             improved = false;
 
-            for (var r = 0; r <= this.maxRank; r++)
+            for (var r = 1; r <= this.maxRank; r++)
             {
                 var numEdgeCrossings = this.edge_crossing(order, r);
-                var edgeLengthScore  = this.edge_length_score(order, r);
+                var edgeLengthScore  = this.edge_length_score(order,r);
 
                 var maxIndex = order.order[r].length - 1;
                 for (var i = 0; i < maxIndex; i++) {
@@ -597,14 +652,22 @@ DrawGraph.prototype = {
                     order.exchange(r, i, i+1);
 
                     var newEdgeCrossings = this.edge_crossing(order, r);
-                    var newLengthScore   = this.edge_length_score(order, r);
+                    var newLengthScore   = this.edge_length_score(order,r);
+
+                    // TODO: also transpose if more males/females end up on the preferred
+                    //       side of a relationships (also hides randomness in initial_order ;)
 
                     if (newEdgeCrossings < numEdgeCrossings ||
                         (newEdgeCrossings == numEdgeCrossings && newLengthScore < edgeLengthScore) ) {
                         // this was a good exchange, apply it to the current real ordering
                         improved = true;
                         numEdgeCrossings = newEdgeCrossings;
+                        edgeLengthScore  = newLengthScore;
                         //if (numEdgeCrossings == 0) return 0; // still want to optimize for edge lengths
+                    }
+                    else if (newEdgeCrossings == numEdgeCrossings && newLengthScore == edgeLengthScore) {    
+                        if ( iter%3 == 0 )
+                            order.exchange(r, i, i+1);
                     }
                     else {
                         // exchange back
@@ -709,65 +772,6 @@ DrawGraph.prototype = {
                 if (!order.move(bestOrder[3], bestOrder[4], bestOrder[5])) throw "assert";
                 numCrossings = bestScore;
             }
-
-            //-----------------------------------------------------------------
-            if (chain.length > 2) {
-                var bestCrossings = numCrossings;
-                // try to move the entire (long) edge left until it hits all 0 order
-                var newOrder  = order.copy();
-                var moved     = true;
-                while (moved) {
-                    moved = false;
-                    for (var i = chain.length-1; i >= 0; i--) {
-                        var piece = chain[i];
-                        var rank  = ranks[piece];
-                        var ord   = newOrder.vOrder[piece];
-
-                        if (ord > 0) {
-                            moved = true;
-
-                            newOrder.exchange(rank, ord, ord-1);
-
-                            var newCross = this.edge_crossing(newOrder);
-                            if (newCross < bestCrossings) {
-                                bestCrossings = newCross;
-                                bestOrder     = newOrder.copy();
-                            }
-                        }
-                    }
-                }
-                /*
-                // try to move the entire (long) edge right until it hits all max order
-                var newOrder  = order.copy();
-                var moved     = true;
-                while (moved) {
-                    moved = false;
-                    for (var i = chain.length-1; i >= 0; i--) {
-                        var piece = chain[i];
-                        var rank  = ranks[piece];
-                        var ord   = newOrder.vOrder[piece];
-
-                        if (ord < newOrder.order[rank].length - 2) {
-                            moved = true;
-
-                            newOrder.exchange(rank, ord, ord+1);
-
-                            var newCross = this.edge_crossing(newOrder);
-                            if (newCross < bestCrossings) {
-                                bestCrossings = newCross;
-                                bestOrder     = newOrder.copy();
-                            }
-                        }
-                    }
-                }
-                */
-
-                if (bestCrossings < numCrossings) {
-                    order.assign(bestOrder);
-                    numCrossings = bestCrossings;
-                }
-
-            }
         }
 
         return numCrossings;
@@ -775,18 +779,24 @@ DrawGraph.prototype = {
     //========================================================================[ordering]=
 
     //=====================================================================[re-ordering]=
-    reRank: function() {
-        // for each relationship node:
-    	//  if parents are ordere next to each other re-rank & reorder
-		
+    reRankRelationships: function() {
+
+        // re-rank all relationship nodes to be on the same level as the lower ranked
+        // parent. Attempt to place next to one of the parents; having ordering info
+        // helps to pick the parent & the location.
+        // Note1: the only case when we may not be able to place next to
+        //        a parent is when both parents have more than 2 relationships.
+        // Note2: also need to shorten incoming multi-rank edges by one node
+        //        (see removeRelationshipRanks())
+
+        // pass1: simple cases: parents are next to each other
         for (var i = 0; i < this.GG.getNumVertices(); i++) {
             if (this.GG.isRelationship(i)) {			    
     		    var parents = this.GG.getInEdges(i);
 			
     			// each "relationship" node should only have two "parent" nodes
-        	    if (parents.length != 2) {
+        	    if (parents.length != 2)
                     throw "Assertion failed: 2 parents per relationship";
-                }
 
                 // only if parents have the same rank
                 if ( this.ranks[parents[0]] != this.ranks[parents[1]] )
@@ -803,11 +813,50 @@ DrawGraph.prototype = {
 			
                 if ( maxOrder == minOrder + 1 ) {
                     this.moveVertexToRankAndOrder( i, this.ranks[parents[0]], maxOrder );
-                }				
+                }
             }
         }
+        /*
+        // pass2: more complicated cases
+        for (var i = 0; i < this.GG.getNumVertices(); i++) {
+            if (this.GG.isRelationship(i)) {			    
+    		    var parents = this.GG.getInEdges(i);
+			
+    			// each "relationship" node should only have two "parent" nodes
+        	    if (parents.length != 2)
+                    throw "Assertion failed: 2 parents per relationship";
+                
+                // 1. pick which rank is the lower rank
+                // 2. pick which parent is a better target
+                // 3. pick which side of the parent to move to
+                // 3. move next to that parent on that side (right next to parent,
+                //    unless there is another relationship node which should be closer
+                
+                if ( this.ranks[parents[0]] != this.ranks[parents[1]] )
+                {
+
+                }
+                else
+                {					
+                    var order1 = this.order.vOrder[parents[0]];
+                    var order2 = this.order.vOrder[parents[1]];
+
+                    // if parents are next to each other in the ordering
+                    var minOrder = Math.min(order1, order2);
+                    var maxOrder = Math.max(order1, order2);
+
+                    //console.log("=== is relationship: " + i + ", minOrder: " + minOrder + ", maxOrder: " + maxOrder );
+			
+                    if ( maxOrder == minOrder + 1 ) {
+                        this.moveVertexToRankAndOrder( i, this.ranks[parents[0]], maxOrder );
+                    }
+                }
+                
+            }
+        }
+        /**/
         
-        this.removeEmptyRanks();
+        this.removeRelationshipRanks();
     },
 
     moveVertexToRankAndOrder: function( v, newRank, newOrder ) {
@@ -822,18 +871,34 @@ DrawGraph.prototype = {
         this.ranks[v] = newRank;
     },
     
-    removeEmptyRanks: function () {
-        for (var r = 1; r <= this.maxRank; r++) {
-            if ( this.order.order[r].length == 0 ) {
-                this.order.order.splice(r,1);
-                
-                for ( var v = 0; v < this.ranks.length; v++ ) {
-                    if ( this.ranks[v] > r )
-                        this.ranks[v]--;
-                }
+    removeRelationshipRanks: function () {
+        // removes ranks previously occupied by relationship nodes (which is every 3rd rank)
+        // (these ranks have either no nodes at all or only virtual nodes
+        // from multi-rank edges passing through)
+        for (var r = 2; r <= this.maxRank; r+=2) {
+            // r+=2 because each 3rd rank is a relationship rank, but once this rank is removed it becomes r+2 not r+3
 
-                this.maxRank--;
+            if ( this.order.order[r].length > 0 ) {
+                // there are some virtual nodes left
+                for (var i = 0; i < this.order.order[r].length; i++) {
+                    var v = this.order.order[r][i];
+                    // it takes a lot of work to completely remove a vertex from a graph.
+                    // however it is easy to disconnect and place it into rank 0 which is ignored when drawing/assigning coordinates
+                    this.GG.unplugVirtualVertex(v);
+                    this.ranks[v] = 0;
+                    this.order.vOrder[v] = this.order.order[0].length;
+                    this.order.order[0].push(v);
+                }
             }
+
+            this.order.order.splice(r,1);
+            
+            for ( var v = 0; v < this.ranks.length; v++ ) {
+                if ( this.ranks[v] > r )
+                    this.ranks[v]--;
+            }
+
+            this.maxRank--;
         }
     },
     //=====================================================================[re-ordering]=
@@ -854,12 +919,13 @@ DrawGraph.prototype = {
     position: function(horizontalSeparationDist)
     {
         var xcoord = this.init_xcoord(horizontalSeparationDist);
+        printObject(xcoord.xcoord);
 
         var xbest     = xcoord.copy();
         var bestScore = this.xcoord_score(xbest);
         var prevScore = 0;
 
-        //this.displayGraph(xbest.xcoord, 'init');
+        this.displayGraph(xbest.xcoord, 'init');
 
         this.try_shift_right(xcoord, true, false, true);
         this.try_shift_left (xcoord, true);
@@ -868,11 +934,13 @@ DrawGraph.prototype = {
 
         this.displayGraph(xcoord.xcoord, 'firstAdj');
 
+        printObject(xcoord.xcoord);
+
         for ( var i = 0; i <= this.maxXcoordIterations; i++ )
         {
             this.try_shift_right(xcoord, true, true, true);
             this.try_shift_left (xcoord, true);
-            //this.try_shift_long_edges(xcoord);
+            this.try_straighten_long_edges(xcoord);
 
             this.displayGraph(xcoord.xcoord, 'Adj' + i);
 
@@ -884,7 +952,6 @@ DrawGraph.prototype = {
             //minnode(i,xcoord);
             //minpath(i,xcoord);
             //packcut(i,xcoord);
-
             xcoord.normalize();
 
             var score = this.xcoord_score(xcoord);
@@ -932,7 +999,7 @@ DrawGraph.prototype = {
         var rankTo   = this.maxRank;
 
         if (typeof(onlyRank) != "undefined") {
-            rankFrom = Math.max(0,            onlyRank-1);
+            rankFrom = Math.max(1,            onlyRank-1);
             rankTo   = Math.min(this.maxRank, onlyRank+1);
         }
 
@@ -971,7 +1038,7 @@ DrawGraph.prototype = {
             }
         }
 
-        //console.log("XcoordScore: " + score);
+        //console.log("XcoordScore: " + stringifyObject(score));
         return score;
     },
 
@@ -1029,6 +1096,8 @@ DrawGraph.prototype = {
             else
                 r = rr;
 
+            if (r == 0) continue;  // disregard all discarded vertices & virtual root
+
             var considerBelow = scoreQualityOfNodesBelow || (r == 0);
             var considerAbove = (scoreQualityOfNodesAbove || r == this.maxRank) && (r != 0);
 
@@ -1042,12 +1111,13 @@ DrawGraph.prototype = {
                 if (debugV && v != debugV ) continue;
 
                 // we care about the quality of resulting graph only for some ranks: sometimes
-                // only above the changem, sometimes only below the change; in any case we know
+                // only above the change, sometimes only below the change; in any case we know
                 // the change of position of vertices on this rank is not going to affect ranks
-                // far away, so we can only compute the sxcore for the rnaks we care about.
+                // far away, so we can only compute the score for the rnaks we care about.
                 var rankToUseForScore = r;
                 if (!considerAbove) rankToUseForScore = r+1;
                 if (!considerBelow) rankToUseForScore = r-1;
+                if (rankToUseForScore == 0) continue;
 
                 var initScore = this.xcoord_score(xcoord, rankToUseForScore);
 
@@ -1114,57 +1184,30 @@ DrawGraph.prototype = {
         var positionsAbove = [];
         var positionsBelow = [];
 
-        var outEdges = this.GG.getOutEdges(v);
-        for (var e = 0; e < outEdges.length; e++) {
-            var u = outEdges[e];
-            if (u == v) continue;
-            var weight = this.GG.weights[v][u];
+        var allEdgesWithWeights = this.GG.getAllEdgesWithWeights(v);
 
-            // have an edge from 'v' to 'u' with weight this.GG.weights[v][u]
+        for (var u in allEdgesWithWeights) {
+            if (allEdgesWithWeights.hasOwnProperty(u)) {
+                if (u == v || u == this.root) continue;
+                var weight = allEdgesWithWeights[u];
 
-            // determine edge type: from real vertex to real, real to/from virtual or v. to v.
-            var coeff = this.xCoordWeights[2];
-            if ( v <= maxRealId && u <= maxRealId )
-                coeff = this.xCoordWeights[0];
-            else if ( v <= maxRealId || u <= maxRealId )
-                coeff = this.xCoordWeights[1];
+                // determine edge type: from real vertex to real, real to/from virtual or v. to v.
+                var coeff = this.xCoordWeights[2];
+                if ( v <= maxRealId && u <= maxRealId )
+                    coeff = this.xCoordWeights[0];
+                else if ( v <= maxRealId || u <= maxRealId )
+                    coeff = this.xCoordWeights[1];
 
-            var w = this.xCoordEdgeWeightValue ? weight : 1.0;
+                var w = this.xCoordEdgeWeightValue ? weight : 1.0;
 
-            var score = coeff * w;
+                var score = coeff * w;
 
-            for (var i = 0; i < score; i++) {
-                if (this.ranks[u] <= this.ranks[v])
-                    positionsAbove.push(xcoord.xcoord[u]);
-                else
-                    positionsBelow.push(xcoord.xcoord[u]);
-            }
-        }
-
-        var inEdges = this.GG.getInEdges(v);
-        for (var e = 0; e < inEdges.length; e++) {
-            var u = inEdges[e];
-            if (u == v) continue;
-            var weight = this.GG.weights[u][v];
-
-            // have an edge from 'u' to 'v' with weight this.GG.weights[u][v]
-
-            // determine edge type: from real vertex to real, real to/from virtual or v. to v.
-            var coeff = this.xCoordWeights[2];
-            if ( v <= maxRealId && u <= maxRealId )
-                coeff = this.xCoordWeights[0];
-            else if ( v <= maxRealId || u <= maxRealId )
-                coeff = this.xCoordWeights[1];
-
-            var w = this.xCoordEdgeWeightValue ? weight : 1.0;
-
-            var score = coeff * w;
-
-            for (var i = 0; i < score; i++) {
-                if (this.ranks[u] <= this.ranks[v])
-                    positionsAbove.push(xcoord.xcoord[u]);
-                else
-                    positionsBelow.push(xcoord.xcoord[u]);
+                for (var i = 0; i < score; i++) {
+                    if (this.ranks[u] <= this.ranks[v])
+                        positionsAbove.push(xcoord.xcoord[u]);
+                    if (this.ranks[u] >= this.ranks[v])
+                        positionsBelow.push(xcoord.xcoord[u]);
+                }
             }
         }
 
@@ -1217,7 +1260,7 @@ DrawGraph.prototype = {
 
         //this.displayGraph( xcoord.xcoord, "shiftleft-start" );
 
-        for (var r = 0; r <= this.maxRank; r++) {
+        for (var r = 1; r <= this.maxRank; r++) {
 
             var fromO = moveBoundaryVertices ? 0 : 1;
             var toO   = moveBoundaryVertices ? this.order.order[r].length : this.order.order[r].length - 1;
@@ -1297,12 +1340,13 @@ DrawGraph.prototype = {
 
         while(improved) {
             //this.displayGraph(xcoord.xcoord, 'sofar');
-            improved = this.improve_graph_edges(xcoord);
+            //improved = this.improve_graph_edges(xcoord);
             //this.displayGraph(xcoord.xcoord, 'afteredges');
             this.try_shift_right(xcoord, true, true, false);
+            //this.displayGraph(xcoord.xcoord, 'aftershift1');
             this.try_shift_left (xcoord, false);
-            //this.displayGraph(xcoord.xcoord, 'aftershifts');
-            improved |= this.try_shift_long_edges(xcoord);
+            //this.displayGraph(xcoord.xcoord, 'aftershift2');
+            improved = this.try_straighten_long_edges(xcoord);
             //this.displayGraph(xcoord.xcoord, 'afterlongedges');
         }
     },
@@ -1391,7 +1435,7 @@ DrawGraph.prototype = {
         return Math.max(xcoord[v], result);
     },
 
-    try_shift_long_edges: function (xcoord)
+    try_straighten_long_edges: function (xcoord)
     {
         // try to straigten long edges without moving any other vertices
 
@@ -1401,8 +1445,13 @@ DrawGraph.prototype = {
         var numVert   = this.GG.getNumVertices();
 
         var checked = [];
-        for (var v = maxRealId+1; v < numVert; v++)
-            checked[v] = false;
+        for (var v = maxRealId+1; v < numVert; v++) {
+            // ignore removed virtual nodes which were placed onrank 0 by removeRelationshipRanks()
+            if (this.ranks[v] == 0)
+                checked[v] = true;
+            else
+                checked[v] = false;
+        }
 
         for (var v = maxRealId+1; v < numVert; v++) {
 
@@ -1465,7 +1514,7 @@ DrawGraph.prototype = {
                     }
                 }
 
-                // narrow th ecoridor to the common available space including this vertex as well
+                // narrow the coridor to the common available space including this vertex as well
                 corridorLeft  = Math.max(corridorLeft,  xcoord.getLeftMostNoDisturbPosition(nextV));
                 corridorRight = Math.min(corridorRight, xcoord.getRightMostNoDisturbPosition(nextV));
                 if (corridorRight < corridorLeft) break;  // no luck, can't straighten
@@ -1492,11 +1541,13 @@ function draw_graph( internalG )
     var mostCompact = false;              // when true, graph may be more compact (sum of all edge
                                           // lengths will be smaler) but with more curved edges
 
-    var orderingIterations = 12;          // paper used: 24
+    var orderingInitIters = 10;           // default: 10
+
+    var orderingIterations = 24;          // paper used: 24
 
     var xcoordIterations   = 2;           // default: 8
 
-    var xcoordWeights      = [1, 4, 32];  // paper used: [1, 2, 8]; see xcoord_score
+    var xcoordWeights      = [1, 2, 8];   // edges[real-real,real-virt,virt-virt]; paper used: [1, 2, 8]; see xcoord_score
 
     var xcoordEdgeWeightValue = true;     // when optimizing edge length/cuvature take
                                           // edge weigth into account or not
@@ -1507,6 +1558,7 @@ function draw_graph( internalG )
                            virtualNodeWidth,
                            mostCompact,
                            xcoordEdgeWeightValue,
+                           orderingInitIters,
                            orderingIterations,
                            xcoordIterations, xcoordWeights );
 
