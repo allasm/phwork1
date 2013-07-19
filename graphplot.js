@@ -431,17 +431,20 @@ DrawGraph.prototype = {
             if (this.GG.isChildhub(i)) {
                 // get the distance between the rightmost and leftmost child
                 var children = this.GG.getOutEdges(i);
-                var minOrder = order.vOrder[children[0]];
-                var maxOrder = minOrder;
-                for (var j = 1; j < children.length; j++) {
-                    var ord = order.vOrder[children[j]];
-                    if ( ord > maxOrder ) maxOrder = ord;
-                    if ( ord < minOrder ) minOrder = ord;                    
+                if ( children.length > 0 ) {
+                    var minOrder = order.vOrder[children[0]];
+                    var maxOrder = minOrder;
+                    for (var j = 1; j < children.length; j++) {
+                        var ord = order.vOrder[children[j]];
+                        if ( ord > maxOrder ) maxOrder = ord;
+                        if ( ord < minOrder ) minOrder = ord;                    
+                    }
                 }
                 totalEdgeLengthInChildren += (maxOrder - minOrder);
             }
         }        
         
+        //console.log("r = " + onlyRank + ", edgeLength = " + totalEdgeLengthInPositions + ", childLen = " + totalEdgeLengthInChildren);
         return totalEdgeLengthInPositions*1000 + totalEdgeLengthInChildren;
     },
 
