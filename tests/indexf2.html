@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta content="utf-8" http-equiv="encoding">
+
+    <script type="text/javascript" src="libs/raphael.js"></script>
+
+    <script type="text/javascript" src="graphdisplay.js"></script>
+    <script type="text/javascript" src="queues.js"></script>
+    <script type="text/javascript" src="graphclasses.js"></script>
+    <script type="text/javascript" src="xcoordclass.js"></script>
+    <script type="text/javascript" src="graphplot.js"></script>
+
+    <script type="text/javascript">
+        function showGraph()
+        {
+            // TESTCASE2: 2(+1) generations with brother-sister-brother-sister (minimum one edge crossing)
+            //            plus a side relationship which should be correctly laid out with no edge crosses
+            //            TODO: add a check for at most one crossed edge
+            //            TODO: add a check that m3 is correctly ranked on the same level with ch3
+
+            var inputG = [                                
+                { name :'f1', outedges: [ {to: 'p1'} ], width: 20 },
+                { name :'m1', outedges: [ {to: 'p1'} ], width: 20 },
+                { name :'p1',  outedges: [ {to: 'chhub1'} ], width: 10 },
+                { name :'chhub1', outedges: [ {to: 'ch1'},{to: 'ch2'},{to: 'ch3'} ], width: 10 },
+                { name :'f2', outedges: [ {to: 'p2'} ], width: 20 },
+                { name :'m2', outedges: [ {to: 'p2'} ], width: 20 },
+                { name :'p2',  outedges: [ {to: 'chhub2'} ], width: 10 },
+                { name :'chhub2', outedges: [ {to: 'ch4'},{to: 'ch5'} ], width: 10 },
+                { name :'ch1', outedges: [ {to: 'p3'} ], width: 20 },
+                { name :'ch4', outedges: [ {to: 'p3'} ], width: 20 },
+                { name :'p3',  outedges: [ {to: 'chhub3'} ], width: 10 },
+                { name :'chhub3', outedges: [ {to: 'ch6'} ], width: 10 },
+                { name :'ch2', outedges: [ {to: 'p4'} ], width: 20 },
+                { name :'ch3', outedges: [ {to: 'p5'} ], width: 20 },
+                { name :'ch5', outedges: [ {to: 'p4'} ], width: 20 },
+                { name :'ch6', width: 20 },
+                { name :'p4', outedges: [ {to: 'chhub4'} ], width: 10 },
+                { name :'chhub4', outedges: [ {to: 'ch8'} ], width: 10 },
+                { name :'m3', outedges: [ {to: 'p5'} ], width: 20 },
+                { name :'p5', outedges: [ {to: 'chhub5'} ], width: 10 },
+                { name :'chhub5', outedges: [ {to: 'ch7'} ], width: 10 },
+                { name :'ch7', width: 20 },
+                { name :'ch8', width: 20 }
+            ];
+
+            var G = new InternalGraph();
+
+            G.init_from_user_graph(inputG, 10);
+
+            display_raw_graph(G, 'input');
+
+            var layoutG = draw_graph(G);
+
+            display_processed_graph(layoutG, 'output');
+        }
+    </script>
+
+</head>
+<body onload="showGraph()">
+    Input Graph:
+    <div id="input"></div>
+    <br>
+    Output:
+    <div id="output"></div>
+</body>
+</html>

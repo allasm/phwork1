@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta content="utf-8" http-equiv="encoding">
+
+    <script type="text/javascript" src="libs/raphael.js"></script>
+
+    <script type="text/javascript" src="graphdisplay.js"></script>
+    <script type="text/javascript" src="queues.js"></script>
+    <script type="text/javascript" src="graphclasses.js"></script>
+    <script type="text/javascript" src="xcoordclass.js"></script>
+    <script type="text/javascript" src="graphplot.js"></script>
+
+    <script type="text/javascript">
+        function showGraph()
+        {
+
+            var inputG = [
+                { name :'ch6',  outedges: [ {to: 'chhub3'} ], width: 20 },
+                { name :'ch7',  outedges: [ {to: 'chhub5'} ], width: 20 },
+                { name :'ch8',  outedges: [ {to: 'chhub4'} ], width: 20 },
+                { name :'chhub3', outedges: [ {to: 'zp3'} ], width: 10 },
+                { name :'chhub4', outedges: [ {to: 'zp4'} ], width: 10 },
+                { name :'chhub5', outedges: [ {to: 'zp5'} ], width: 10 },
+                { name :'zp3', outedges: [ {to: 'ch1'},{to: 'ch4'} ], width: 10 },
+                { name :'zp4', outedges: [ {to: 'ch2'},{to: 'ch5'} ], width: 10 },
+                { name :'zp5', outedges: [ {to: 'ch3'},{to: 'm3'} ], width: 10 },
+                { name :'ch1',  outedges: [ {to: 'chhub1'} ], width: 20 },
+                { name :'ch2',  outedges: [ {to: 'chhub1'} ], width: 20 },
+                { name :'ch3',  outedges: [ {to: 'chhub1'} ], width: 20 },
+                { name :'ch4',  outedges: [ {to: 'chhub2'} ], width: 20 },
+                { name :'ch5',  outedges: [ {to: 'chhub2'} ], width: 20 },
+                { name :'chhub1', outedges: [ {to: 'zp1'} ], width: 10 },
+                { name :'chhub2', outedges: [ {to: 'zp2'} ], width: 10 },
+                { name :'zp1', outedges: [ {to: 'f1'},{to: 'm1'} ], width: 10 },
+                { name :'zp2', outedges: [ {to: 'f2'},{to: 'm2'} ], width: 10 },
+                { name :'f1', width: 20 },
+                { name :'m1', width: 20 },
+                { name :'f2', width: 20 },
+                { name :'m2', width: 20 },
+                { name :'m3', width: 20 }
+            ];
+
+            var G = new InternalGraph();
+
+            G.init_from_user_graph(inputG, 10);
+
+            display_raw_graph(G, 'input');
+
+            var layoutG = draw_graph(G);
+
+            display_processed_graph(layoutG, 'output');
+        }
+    </script>
+
+</head>
+<body onload="showGraph()">
+    Input Graph:
+    <div id="input"></div>
+    <br>
+    Output:
+    <div id="output"></div>
+</body>
+</html>
