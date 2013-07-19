@@ -9,9 +9,6 @@ InternalGraph = function() {
     this.idToName = [];
     this.nameToId = {};
 
-    this.cycleEdges = [];
-    this.numCycleInEdges = [];
-
     this.root = undefined;
     this.numRealVertices = 0;
 
@@ -79,8 +76,6 @@ InternalGraph.prototype = {
         this.numRealVertices = this.v.length;    // used during later stages to separate real vertices from virtual-multi-rank-edge-breaking ones
 
         this.defaultNodeWidth = defaultNodeWidth;
-
-        this.findCyclesAndMarkCycleBreakingEdges();
 
         this.validate();
     },
@@ -159,12 +154,6 @@ InternalGraph.prototype = {
             }
         }
 
-        // copy cycle edge info. Note that extended graph can't have any new ones so copying is OK
-        for (var i = 0; i < this.cycleEdges.length; i++) {
-            newG.cycleEdges[i]      = this.cycleEdges[i];
-            newG.numCycleInEdges[i] = this.numCycleInEdges[i];
-        }
-
         newG.validate();
 
         //newG.findAllEdgesBetweenRanks(ranks, maxRank);
@@ -203,76 +192,6 @@ InternalGraph.prototype = {
     //-------------------------[construction for ordering]--
 
 
-    //-[preprocessing for ranking]--------------------------
-    //
-    // A graph must be acyclic to have a consistent rank assignment: a preprocessing step
-    // detects cycles and breaks them by reversing certain edges [RDM]. Using ~DFS.
-    // We implemented a heuristic to reverse edges that participate in many cycles.
-    //
-    findCyclesAndMarkCycleBreakingEdges: function() {
-
-        // do a DFS walk over the tree, increment multiEdge for those edges making loops
-        while(true) {
-            var edgeCycleCount = [];
-            var visited        = [];
-            for (var v = 0; v < this.v.length; v++) {
-                edgeCycleCount[v] = {};
-                visited[v]        = false;
-            }
-
-            var worstEdge = {
-                count: 0,
-                from:  undefined,
-                to:    undefined
-            };
-
-            this.DFSVisit(this.root, visited, edgeCycleCount, worstEdge);
-
-            if (worstEdge.count == 0) break;
-
-            this.cycleEdges[worstEdge.from][worstEdge.to] = 1;
-            this.numCycleInEdges[worstEdge.to]++;
-
-            console.log("Cycle edge removed: " +
-                   this.getVertexNameById(worstEdge.from) + "->" +
-                   this.getVertexNameById(worstEdge.to) + " (count: " +
-                   worstEdge.count + ")");
-        };
-
-    },
-
-    DFSVisit: function( vertex, visited, edgeCycleCount, worstEdge ) {
-        visited[vertex] = true;
-
-        var outEdges = this.getOutEdges(vertex);
-
-        for (var i = 0; i < outEdges.length; i++) {
-            var v = outEdges[i];
-
-            if ( this.isCycleEdge(vertex, v) ) continue;
-
-            if ( visited[v] ) {
-                if (edgeCycleCount[vertex].hasOwnProperty(v))
-                    edgeCycleCount[vertex][v]++;
-                else
-                    edgeCycleCount[vertex][v]=1;
-
-                if (edgeCycleCount[vertex][v] > worstEdge.count) {
-                    worstEdge.count = edgeCycleCount[vertex][v];
-                    worstEdge.from  = vertex;
-                    worstEdge.to    = v;
-                }
-            }
-            else {
-                this.DFSVisit( v, visited, edgeCycleCount, worstEdge );
-            }
-        }
-
-        visited[vertex] = false;
-    },
-    //--------------------------[preprocessing for ranking]-
-
-
     // id: optional. If not given next available is used.
     _addVertex: function(name, id, width) {
         if (this.nameToId.hasOwnProperty(name)) throw "addVertex: [" + name + "] is already in G";
@@ -285,9 +204,6 @@ InternalGraph.prototype = {
         this.inedges[nextId] = [];
 
         this.weights[nextId] = {};
-
-        this.cycleEdges[nextId]      = {};
-        this.numCycleInEdges[nextId] = 0;
 
         this.idToName[nextId] = name;
 
@@ -409,14 +325,6 @@ InternalGraph.prototype = {
 
         return edgeToWeight;
     },
-
-    isCycleEdge: function(fromV, toV) {
-        return this.cycleEdges[fromV].hasOwnProperty(toV);
-    },
-
-    getNumCycleInEdges: function(toV) {
-        return this.numCycleInEdges[toV];
-    },
 	
 	isRelationship: function(v) {
 	    return (this.getVertexNameById(v).charAt(0) == 'p');
@@ -496,7 +404,7 @@ RankedSpanningTree.prototype = {
 
                 numScanedInEdges[vertex]++;
 
-                var numRealInEdges = G.getInEdges(vertex).length - G.getNumCycleInEdges(vertex);
+                var numRealInEdges = G.getInEdges(vertex).length;
 
                 if (numScanedInEdges[vertex] == numRealInEdges) {
                     queue.push(vertex);
