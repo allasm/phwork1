@@ -4,6 +4,10 @@ Queue = function() {
 
 Queue.prototype = {
 
+    pushAll: function(list) {
+        this.data = list.slice(0);
+    },
+
     push: function(v) {
         this.data.push(v);
     },
