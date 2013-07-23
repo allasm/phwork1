@@ -32,6 +32,7 @@ InternalGraph.prototype = {
     ];
     */
     init_from_user_graph: function(inputG, defaultNodeWidth) {
+        // TODO: auto-create child nodes form relationship nodes
 
         for (var v = 0; v < inputG.length; v++) {
             var width = inputG[v].hasOwnProperty('width') ?
@@ -59,7 +60,7 @@ InternalGraph.prototype = {
                 }
             }
         }
-        
+
         // find all vertices without an in-edge
         for (var v = 0; v < inputG.length; v++) {
             vid = this.getVertexIdByName( inputG[v].name );
@@ -199,10 +200,10 @@ InternalGraph.prototype = {
         // virtiual nodes guaranteed to have only one in and one out edge
         var parent = this.inedges[v][0];
         var child  = this.v[v][0];
-       
+
         // replace outgoing edge for parent from V to child
         var idx1 = this.v[parent].indexOf(v);
-        this.v[parent][idx1] = child;        
+        this.v[parent][idx1] = child;
         // replace incoming edge for child from V to parent
         var idx2 = this.inedges[child].indexOf(v);
         this.inedges[child][idx2] = parent;
@@ -215,7 +216,13 @@ InternalGraph.prototype = {
     },
 
     validate: function() {
-        // TODO
+        // TODO: collect all assertions
+        // check for cycles - supposedly pedigrees can't have any
+        // throw "Assertion failed: exactly 2 parents per relationship";
+        // nodes only have edges to relationships
+        // relationships must have only edges to child nodes (exactly one?)
+        // child nodes only edges to people
+        // assumption: no self-edges (all checks are removed in the code for speed, e.g. in edge_crossing)
     },
 
     getVertexIdByName: function(name) {
@@ -268,7 +275,7 @@ InternalGraph.prototype = {
 
     getAllEdgesWithWeights: function(v) {
         var edgeToWeight = {};
-        
+
         var outEdges = this.getOutEdges(v);
         for (var i = 0; i < outEdges.length; i++) {
             var u = outEdges[i];
@@ -286,7 +293,7 @@ InternalGraph.prototype = {
 
         return edgeToWeight;
     },
-	
+
 	isRelationship: function(v) {
         // TODO
 	    return (this.getVertexNameById(v).charAt(0) == 'p');
@@ -296,7 +303,6 @@ InternalGraph.prototype = {
         // TODO
 	    return (this.getVertexNameById(v).charAt(0) == 'c');
 	}
-
 };
 
 
@@ -460,15 +466,9 @@ Ordering.prototype = {
         return newO;
     },
 
-    assign: function (otherOrder) {
-        // makes this a copy of otherOrder (no duplication)
-        this.order  = otherOrder.order;
-        this.vOrder = otherOrder.vOrder;
-    },
-	
     moveVertexToRankAndOrder: function ( oldRank, oldOrder, newRank, newOrder ) {
         var v = this.order[oldRank][oldOrder];
-	
+
         this.order[oldRank].splice(oldOrder, 1);
 
         this.order[newRank].splice(newOrder, 0, v);
@@ -481,7 +481,7 @@ Ordering.prototype = {
         for ( var i = oldOrder; i < this.order[oldRank].length; i++ ) {
             var nextV = this.order[oldRank][i];
             this.vOrder[nextV]--;
-        }        
+        }
 	}
 };
 
@@ -539,8 +539,13 @@ _copy2DArray = function(from, to) {
     }
 }
 
+_makeFlattened2DArrayCopy = function(array) {
+    var flattenedcopy = [].concat.apply([], array);
+    return flattenedcopy;
+}
 
 
+/*
 function shuffleArray (array) {
     // Using Fisher-Yates Shuffle algorithm
 
@@ -559,3 +564,28 @@ function shuffleArray (array) {
 
     return array;
 }
+*/
+
+
+function swap (array, x, y) {
+    var b = array[y];
+    array[y] = array[x];
+    array[x] = b;
+}
+
+function permute2DArrayInFirstDimension (permutations, array, from) {
+   var len = array.length;
+
+   if (from == len-1) {
+       if ( Math.max.apply(null, array[0]) < Math.max.apply(null, array[len-1]) )   // discard mirror copies of other permutations
+           permutations.push(_makeFlattened2DArrayCopy(array));
+       return;
+   }
+
+   for (var j = from; j < len; j++) {
+      swap(array, from, j);
+      permute2DArrayInFirstDimension(permutations, array, from+1);
+      swap(array, from, j);
+   }
+}
+
