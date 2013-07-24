@@ -11,12 +11,13 @@ function display_raw_graph(G, renderTo) {
 
 function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) {
 
-    if (!debugPrint) printObject(renderPackage);
+    //if (!debugPrint) printObject(renderPackage);
 
     var G         = renderPackage.convertedG;
     var ranks     = renderPackage.ranks;
     var ordering  = renderPackage.ordering;
     var positions = renderPackage.positions;
+    var consangr  = renderPackage.consangr;
 
     var canvas = Raphael(renderTo, 3000, 1200);
 
@@ -26,7 +27,7 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
 
     if (debugMsg) canvas.text(50,10,debugMsg);
 
-    // rank 0 has virtual root and removed virtual nodes
+    // rank 0 has removed virtual nodes
     for ( var r = 1; r < ordering.order.length; r++ ) {
 
         var len = ordering.order[r].length;
@@ -43,51 +44,42 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
                 var box = canvas.rect( 5 + leftX * xScale, topY, G.getVertexWidth(v) * xScale, 30 );
                 box.attr({fill: "#ccc"});
             }
-            
+
             var midX = 5 + leftX * xScale + (G.getVertexWidth(v) * xScale)/2;
 
             if ( v <= G.getMaxRealVertexId() || debugPrint )
-                var text = canvas.text( midX, topY + 15, G.getVertexNameById(v) );
+                //var text = canvas.text( midX, topY + 15, G.getVertexNameById(v) );
+                var text = canvas.text( midX, topY + 15, v.toString() );
 
             var outEdges = G.getOutEdges(v);
 
             for ( var j = 0; j < outEdges.length; j++ ) {
                 var u = outEdges[j];
 
-                if ( u == v ) {
-                    var p = [];
-                    p.push(midX+50, curY + 15);
-                    p.push(midX+30, curY + 5);
-                    p = ["M", midX+30, curY + 25, "R"].concat(p);
-                    var nextE = canvas.path(p);
-                    nextE.attr({"stroke":"#955"});
-                    continue;
-                }
-
                 var leftTargetX  = positions[u] - G.getVertexHalfWidth(u);
                 var rightTargetX = positions[u] + G.getVertexHalfWidth(u);
                 var midTargetX  = 5 + leftTargetX * xScale + (G.getVertexWidth(u) * xScale)/2;
-                
-                if ( ranks[u] < ranks[v] )        // edge above
-                {
-                   var line = canvas.path("M " + (midX+10) + " " + (topY+5) + " L " + (midTargetX+10) +
-                                          " " + (curY - 20));
-                   line.attr({"stroke":"#955"});
-                }
-                else if ( ranks[u] == ranks[v] )  // edge across
+
+                var stroke = "#000";
+                var destination = u;
+                while (destination > G.getMaxRealVertexId())
+                    destination = G.getOutEdges(destination)[0];
+                if (consangr.hasOwnProperty(destination))
+                    stroke = "#F00";
+
+                if ( ranks[u] == ranks[v] )  // edge across
                 {
                     // note: only possible with "relationship" nodes on the same rank
                     if ( ordering.vOrder[u] < ordering.vOrder[v] ) {   // edge to the left
                         var line = canvas.path("M " + (5+leftX*xScale) + " " + (topY + 10) + " L " + (5+rightTargetX*xScale) + " " + (topY + 15));
-                        line.attr({"stroke":"#000"});                    
+                        line.attr({"stroke":stroke});
                     }
-                    else                                               // edge to the right
-                    {
+                    else {                                             // edge to the right
                         var line = canvas.path("M " + (5+rightX*xScale) + " " + (topY + 10) + " L " + (5+leftTargetX*xScale) + " " + (topY + 15));
-                        line.attr({"stroke":"#000"});                                        
+                        line.attr({"stroke":stroke});
                     }
                 }
-                else                              // edge below
+                else                         // edge below
                 {
                     if (u <= G.getMaxRealVertexId()){
                         var startX = midX;
@@ -95,7 +87,7 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
                         if (midTargetX > midX) { midTargetX -= 2; startX += 2; }
                         var line = canvas.path("M " + (startX) + " " + (topY+30) + " L " + (midTargetX) +
                                                " " + (topY + 50));
-                        line.attr({"stroke":"#000"});
+                        line.attr({"stroke":stroke});
                     }
                     else {
                         // the entire long edge is handled here so that it is easie rot replace by splines or something else later on
@@ -110,13 +102,13 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
                             if (u > G.getMaxRealVertexId()) {
                                 var line = canvas.path("M " + (prevX) + " " + yy + " L " + (midTargetX) +
                                                        " " + targetY);
-                                line.attr({"stroke":"#000"});
+                                line.attr({"stroke":stroke});
 
                                 if (G.getOutEdges(u)[0] > G.getMaxRealVertexId() ) {
                                     // draw a line across the node itself (instead of a box as for real nodes)
                                     var line2 = canvas.path("M " + (midTargetX) + " " + targetY + " L " + (midTargetX) +
                                                            " " + (targetY+30));
-                                    line2.attr({"stroke":"#000"});
+                                    line2.attr({"stroke":stroke});
                                 }
                                 else { yy -= 30; }
                             }
@@ -128,16 +120,16 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
                                 // note: only possible with "relationship" nodes on the same rank
                                 if ( ordering.vOrder[u] < ordering.vOrder[v] ) {   // edge to the left
                                     var line = canvas.path("M " + prevX + " " + (yy) + " L " + (5+rightTargetX*xScale) + " " + (yy + 15));
-                                    line.attr({"stroke":"#000"});                    
+                                    line.attr({"stroke":stroke});
                                 }
                                 else                                               // edge to the right
                                 {
                                     var line = canvas.path("M " + prevX + " " + (yy) + " L " + (5+leftTargetX*xScale) + " " + (yy + 15));
-                                    line.attr({"stroke":"#000"});                                        
+                                    line.attr({"stroke":stroke});
                                 }
                                 break;
                             }
-                            
+
                             v = u;
                             u = G.getOutEdges(u)[0];
 
@@ -205,3 +197,4 @@ function _printObjectInternal(o, level) {
 
     return output;
 }
+

@@ -10,6 +10,8 @@ InternalGraph = function() {
     this.nameToId = {};
 
     this.parentlessNodes = [];
+    this.leafNodes       = [];
+
     this.numRealVertices = 0;
 
     this.vWidth = [];
@@ -67,6 +69,10 @@ InternalGraph.prototype = {
 
             if ( this.getInEdges(vid).length == 0 ) {
                 this.parentlessNodes.push(vid);
+            }
+
+            if ( this.getOutEdges(vid).length == 0 ) {
+                this.leafNodes.push(vid);
             }
         }
 
@@ -150,6 +156,7 @@ InternalGraph.prototype = {
         }
 
         newG.parentlessNodes = this.parentlessNodes;
+        newG.leafNodes       = this.leafNodes;
 
         newG.validate();
 
@@ -302,6 +309,25 @@ InternalGraph.prototype = {
 	isChildhub: function(v) {
         // TODO
 	    return (this.getVertexNameById(v).charAt(0) == 'c');
+	},
+
+	isPerson: function(v) {
+	    return (v <= this.getMaxRealVertexId() && !this.isRelationship(v) && !this.isChildhub(v));
+	},
+
+	getParents: function(v) {
+	    // TODO + checks + long edges
+	    // skips through relationship and child nodes and returns an array of two real parents. If none found returns []
+	    if (this.inedges[v].length == 0)
+	        return [];
+	    return this.inedges[this.inedges[this.inedges[v][0]][0]];
+	},
+
+	getProducingRelationship: function(v) {
+	    // TODO + checks
+	    // find the relationship which produces this node (or null if not present)
+	    if (this.inedges[v].length == 0) return null;
+	    return this.inedges[this.inedges[v][0]][0];
 	}
 };
 
@@ -577,7 +603,7 @@ function permute2DArrayInFirstDimension (permutations, array, from) {
    var len = array.length;
 
    if (from == len-1) {
-       if ( Math.max.apply(null, array[0]) < Math.max.apply(null, array[len-1]) )   // discard mirror copies of other permutations
+       //if ( len == 1 || Math.max.apply(null, array[0]) < Math.max.apply(null, array[len-1]) )   // discard mirror copies of other permutations
            permutations.push(_makeFlattened2DArrayCopy(array));
        return;
    }
