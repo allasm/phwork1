@@ -11,12 +11,12 @@ DrawGraph = function(internalG)
     this.positions = undefined;
 
     this.ancestors = undefined;  // for each node lists all its ancestors and the closest relationship distance
-    this.consangr  = undefined;  // set of consanguinous relationship IDs
+    this.consangr  = undefined;  // set of consanguineous relationship IDs
 };
 
 DrawGraph.prototype = {
 
-    maxInitOrderingBuckets: 5,           // it may take up to factorial_of_this_number/2 iterations to generate initial ordering
+    maxInitOrderingBuckets: 5,           // it may take up to ~factorial_of_this_number iterations to generate initial ordering
     maxOrderingIterations:  24,          // up to so many iterations are spent optimizing initial ordering
     maxXcoordIterations:    8,
     xCoordWeights:          [1, 2, 8],   // see xcoord_score(); edges[real-real,real-virt,virt-virt]
@@ -278,39 +278,37 @@ DrawGraph.prototype = {
     {
         var best                = undefined;
         var bestCrossings       = Infinity;
-        var bestEdgeLengthScore = Infinity;
 
         var permutations = this.computePossibleParentlessNodePermutations(maxInitOrderingBuckets);
+
         for (var initOrderIter = 0; initOrderIter < permutations.length; initOrderIter++ ) {
             order = this.init_order_top_to_bottom(permutations[initOrderIter]);
 
-            this.transpose(order);  // remove easily-locally-fixable mistakes
+            this.transpose(order, false);  // fix locally-fixable edge crossings,
+                                           // but do not bother doing minor optimizations (for performance reasons)
 
-            var numCrossings    = this.edge_crossing(order);
-            var edgeLengthScore = this.edge_length_score(order);
+            var numCrossings = this.edge_crossing(order);
 
             if ( numCrossings < bestCrossings ) {
-                best                = order.copy();
-                bestCrossings       = numCrossings;
-                bestEdgeLengthScore = edgeLengthScore;
+                best          = order.copy();
+                bestCrossings = numCrossings;
                 if ( numCrossings == 0 ) break;
             }
         }
 
         if ( bestCrossings > 0 ) {
             permutations = this.computePossibleLeafNodePermutations(maxInitOrderingBuckets);
+
             for (var initOrderIter2 = 0; initOrderIter2 < permutations.length; initOrderIter2++ ) {
                 order = this.init_order_bottom_to_top(permutations[initOrderIter2]);
 
-                this.transpose(order);  // remove easily-locally-fixable mistakes
+                this.transpose(order, false);  // fix locally-fixable edge crossings
 
                 var numCrossings    = this.edge_crossing(order);
-                var edgeLengthScore = this.edge_length_score(order);
 
                 if ( numCrossings < bestCrossings ) {
-                    best                = order.copy();
-                    bestCrossings       = numCrossings;
-                    bestEdgeLengthScore = edgeLengthScore;
+                    best          = order.copy();
+                    bestCrossings = numCrossings;
                     if ( numCrossings == 0 ) break;
                 }
             }
@@ -320,6 +318,8 @@ DrawGraph.prototype = {
         console.log("Initial ordering:  numCrossings= " + bestCrossings);
 
         var noChangeIterations = 0;
+
+        var bestEdgeLengthScore = this.edge_length_score(best);
 
         var order = best.copy();
 
@@ -333,8 +333,10 @@ DrawGraph.prototype = {
 
             //console.log("median: " + _printObjectInternal(order.order, 0));
 
-            // try to optimize checking if each step is useful (bad adjustments are discarded);
-            this.transpose(order);
+            // try to optimize locally (fix easily-fixable edge crossings, put children
+            // and partners closer to each other) checking if each step is useful and
+            // discarding bad adjustments (i.e. guaranteed to either improve or leave as is)
+            this.transpose(order, true);
 
             //console.log("transpose: " + _printObjectInternal(order.order, 0));
 
@@ -459,8 +461,6 @@ DrawGraph.prototype = {
                 var u = this.GG.leafNodes[j];
                 if (handled.hasOwnProperty(u)) continue;
 
-                if ( this.GG.getInEdges(u).length != 1 )
-                    throw "Assertion failed: only one in edge into a leaf node";
                 var childhubNodeU = this.GG.getInEdges(u)[0];
 
                 if (childhubNode == childhubNodeU)
@@ -482,7 +482,6 @@ DrawGraph.prototype = {
 
         console.log("Found " + permutations.length + " permutations of leaf nodes");
 
-        //permutations = [ this.GG.parentlessNodes ];  //DEBUG: no permutations
         return permutations;
     },
 
@@ -585,7 +584,7 @@ DrawGraph.prototype = {
         var totalEdgeLengthInPositions = 0;
         var totalEdgeLengthInChildren  = 0;
 
-        // Two goals: without increasin ght enumber of edge crossings try to
+        // Two goals: without increasing the number of edge crossings try to
         //   higher priority: place people in a relationship close(r) to each other
         //   lower priority:  place all children close(r) to each other
         for (var i = 0; i < this.GG.getNumVertices(); i++) {
@@ -818,7 +817,7 @@ DrawGraph.prototype = {
     },
     //-------------------------------------------------------------------------[wmedian]-
 
-    transpose: function(order)
+    transpose: function(order, doMinorImprovements)
     {
         // for each rank: goes over all vertices in the rank and tries to switch orders of two
         //                adjacent vertices. If numCrossings is improved keeps the new order.
@@ -832,7 +831,7 @@ DrawGraph.prototype = {
             for (var r = 1; r <= this.maxRank; r++)
             {
                 var numEdgeCrossings = this.edge_crossing(order, r);
-                var edgeLengthScore  = this.edge_length_score(order,r);
+                var edgeLengthScore  = doMinorImprovements ? this.edge_length_score(order,r) : 0;
 
                 var maxIndex = order.order[r].length - 1;
                 for (var i = 0; i < maxIndex; i++) {
@@ -840,7 +839,7 @@ DrawGraph.prototype = {
                     order.exchange(r, i, i+1);
 
                     var newEdgeCrossings = this.edge_crossing(order, r);
-                    var newLengthScore   = this.edge_length_score(order,r);
+                    var newLengthScore   = doMinorImprovements ? this.edge_length_score(order,r) : 0;
 
                     // TODO: also transpose if more males/females end up on the preferred
                     //var maleFemaleScore  = ...
@@ -1224,14 +1223,14 @@ DrawGraph.prototype = {
         var bestScore = this.xcoord_score(xbest);
         var prevScore = 0;
 
-        this.displayGraph(xbest.xcoord, 'init');
+        //this.displayGraph(xbest.xcoord, 'init');
 
         this.try_shift_right(xcoord, true, false, true);
         this.try_shift_left (xcoord, true);
         this.try_shift_right(xcoord, false, true, true);
         this.try_shift_left (xcoord, true);
 
-        this.displayGraph(xcoord.xcoord, 'firstAdj');
+        //this.displayGraph(xcoord.xcoord, 'firstAdj');
 
         printObject(xcoord.xcoord);
 
@@ -1241,7 +1240,7 @@ DrawGraph.prototype = {
             this.try_shift_left (xcoord, true);
             this.try_straighten_long_edges(xcoord);
 
-            this.displayGraph(xcoord.xcoord, 'Adj' + i);
+            //this.displayGraph(xcoord.xcoord, 'Adj' + i);
 
             // [TODO] not clear how and hard to implement sugested heuristics.
             //        The paper suggests to do a network simplex anyway instead, but it is
@@ -1837,7 +1836,7 @@ function draw_graph( internalG )
     var virtualNodeWidth = 2;             // same relative units as in intenalG.width fields
                                           // (better results are obtained when it is even)
 
-    var orderingInitBuckets = 5;          // default: 5. It may take up to factorial_of_this_number/2 iterations. See ordering
+    var orderingInitBuckets = 5;          // default: 5. It may take up to ~factorial_of_this_number iterations. See ordering
 
     var orderingIterations = 24;          // paper used: 24. Up to so many iterations are spent optimizing initial ordering
 
