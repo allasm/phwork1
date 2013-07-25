@@ -8,6 +8,7 @@ DrawGraph = function(internalG)
     this.ranks     = undefined;  // array: index = vertex id, value = rank
     this.maxRank   = undefined;  // int:   max rank in the above array (maintained for performance reasons)
     this.order     = undefined;  // class: Ordering
+    this.vertLevel = undefined;
     this.positions = undefined;
 
     this.ancestors = undefined;  // for each node lists all its ancestors and the closest relationship distance
@@ -36,7 +37,7 @@ DrawGraph.prototype = {
         if (xcoordWeights)          this.xCoordWeights          = xcoordWeights;
         if (xcoordEdgeWeightValue)  this.xCoordEdgeWeightValue  = xcoordEdgeWeightValue;
 
-        var begin = new Date().getTime();
+        var timer = new Timer();
 
         // 1)
         var rankResult = this.rank();
@@ -44,12 +45,9 @@ DrawGraph.prototype = {
         this.ranks   = rankResult.ranks;
         this.maxRank = rankResult.maxRank;
 
-        var runTime = new Date().getTime() - begin;
-        console.log( "=== Ranking runtime: " + runTime + "ms" );
+        timer.printSinceLast("=== Ranking runtime: ");
 
         // 2)
-        begin = new Date().getTime();
-
         // ordering algorithms needs all edges to connect nodes on neighbouring ranks only;
         // to accomodate that multi-rank edges are split into a chain of edges between new
         // "virtual" nodes on intermediate ranks
@@ -59,13 +57,9 @@ DrawGraph.prototype = {
 
         this.order = this.ordering(this.maxInitOrderingBuckets, this.maxOrderingIterations);
 
-        runTime = new Date().getTime() - begin;
-        console.log( "=== Ordering runtime: " + runTime + "ms" );
-
+        timer.printSinceLast("=== Ordering runtime: ");
 
         // 2.1)
-        begin = new Date().getTime();
-
         var ancestors = this.findAllAncestors();
 
         this.ancestors = ancestors.ancestors;
@@ -80,24 +74,26 @@ DrawGraph.prototype = {
         //printObject( this.GG );
         //printObject( this.ranks );
 
-        runTime = new Date().getTime() - begin;
-        console.log( "=== Ancestors + re-ranking: " + runTime + "ms" );
-
+        timer.printSinceLast("=== Ancestors + re-ranking runtime: ");
 
         // 3)
-        begin = new Date().getTime();
 
-        this.positions = this.position(horizontalSeparationDist);
+        this.vertLevel = this.positionVertically();
 
-        runTime = new Date().getTime() - begin;
-        console.log( "=== Positioning runtime: " + runTime + "ms" );
+        timer.printSinceLast("=== Vertical spacing runtime: ");
 
         // 4)
+        this.positions = this.position(horizontalSeparationDist);
+
+        timer.printSinceLast("=== Positioning runtime: ");
+
+        // 5)
         //this.make_splines();
 
         return { convertedG: this.GG,
                  ranks:      this.ranks,
                  ordering:   this.order,
+                 vertLevel:  this.vertLevel,
                  positions:  this.positions,
                  consangr:   this.consangr };
     },
@@ -139,10 +135,14 @@ DrawGraph.prototype = {
         //    note1: sometimes a component may have both incoming and outgoing muti-rank edges;
         //           only one of those can be shortened and the choice is made based on edge weight
         //    note2: we can only keep track of outgoing edges as for each incoming edge there is an
-        //           outgoing edge in another component, and we only use one edge per re-ranking iteration
+        //           outgoing edge in another component, and we only shorten one edge per re-ranking iteration
         // 3. reduce all ranks by that edge's length minus 1
         // 4. once any two components are merged need to redo the entire process because the new
         //    resuting component may have other minimum in/out multi-rnak edges
+        //
+        // TODO: add support for user-defined ranks, e.g. in "i'm my own grandpa" case one of the
+        //       edges will be shortened, while the user may want both father-daughter/mother-son
+        //       edges to be long
 
         console.log("Re-ranking ranks before: " + stringifyObject(ranks));
 
@@ -699,8 +699,10 @@ DrawGraph.prototype = {
             for (var j = 0; j < len; j++) {
                 var target = outEdges[j];
 
-                var rankTarget  = this.ranks[target];
-                if ( rankTarget != rankT ) continue;
+                // no need to check ranks, as all edges in pedigrees go in one direction and
+                // this.GG has only edges between adjacent ranks
+                //var rankTarget  = this.ranks[target];
+                //if ( rankTarget != rankT ) continue;
 
                 var orderTarget = order.vOrder[target];
 
@@ -1201,17 +1203,91 @@ DrawGraph.prototype = {
     },
     //=======================================================================[ancestors]=
 
+    //=[vertical separation for horizontal edges]========================================
+    positionVertically: function()
+    {
+        var verticalLevels = new VerticalLevels();
+
+        // for each rank:
+        // 1) if rank has childhub nodes:
+        //    a) for each vertex on the rank, in the ordering order
+        //    b) if only one child - skip (it will be  avertical not horizontal edge)
+        //    c) check if any edges cross any edges of the vertices earlier in the order
+        //    d) if yes, add that level to the set of forbidden levels
+        //    e) pick minimum level which is not forbidden
+        //
+        // 2) if rank has "person" and "relationship" nodes
+        //    a) for each "person" vertex on the rank, in the ordering order
+        //    b) for each edge which is not going to a neighbouring node
+        //    c) ... ?
+
+        // note: using very inefficient O(childnodes^2 * childnode_outedges^2) algorithm, which runs very fast though
+
+        // go over childnode ranks.
+        for (var r = 2; r <= this.maxRank; r+=2) {
+
+            verticalLevels.rankVerticalLevels[r] = 1;    // number of levels between rank r and r+1. Start with 1
+
+            var len = this.order.order[r].length;
+            for (var i = 0; i < len; i++) {
+                var v = this.order.order[r][i];
+
+                var forbiddenLevels = {};                // levels which can't be used by v. Initially none
+
+                if (v > this.GG.getMaxRealVertexId()) continue;
+                if (!this.GG.isChildhub(v)) throw "Assertion failed: childhub nodes at every other rank";
+
+                var outEdges = this.GG.getOutEdges(v);
+                for (var j = 0; j < outEdges.length; j++) {
+                    var target      = outEdges[j];
+                    var targetOrder = this.order.vOrder[target];
+
+                    // check if this edge {v,targetV} crosses any edges of the vertices earlier in the order
+
+                    for (var ord = 0; ord < i; ord++) {
+                        var u     = this.order.order[r][ord];
+                        var edges = this.GG.getOutEdges(u);
+
+                        for (var k = 0; k < edges.length; k++) {
+                            var otherTarget = edges[k];
+                            var otherOrder  = this.order.vOrder[otherTarget];
+
+                            if (otherOrder > targetOrder) {
+                                // crossing detected
+                                forbiddenLevels[verticalLevels.childEdgeLevel[u]] = true;
+                            }
+                        }
+                    }
+                }
+
+                //find the minimum level not in forbiddenLevels
+                var useLevel = 1;
+                while ( forbiddenLevels.hasOwnProperty(useLevel) )
+                    useLevel++;
+
+                verticalLevels.childEdgeLevel[v] = useLevel;
+
+                if (useLevel > verticalLevels.rankVerticalLevels[r])
+                    verticalLevels.rankVerticalLevels[r] = useLevel;
+            }
+        }
+
+        return verticalLevels;
+    },
+    //========================================[vertical separation for horizontal edges]=
+
     //=[position]========================================================================
 
-    displayGraph: function(xcoord, message) {
-
+    displayGraph: function(xcoord, message)
+    {
         var renderPackage = { convertedG: this.GG,
                               ranks:      this.ranks,
                               ordering:   this.order,
                               positions:  xcoord,
-                              consangr:   this.consangr };
+                              consangr:   this.consangr,
+                              vertLevel:  this.vertLevel };
 
-        display_processed_graph(renderPackage, 'output', true, message);
+        debug_display_processed_graph(renderPackage, 'output', true, message);
     },
 
     position: function(horizontalSeparationDist)
@@ -1267,6 +1343,8 @@ DrawGraph.prototype = {
         // stretch narrow parts of the graph up to the widest part if this
         // improves presentation and makes edges more straight and less crowded
         this.widen_graph(xbest);
+
+        this.displayGraph(xcoord.xcoord, 'final');
 
         return xbest.xcoord;
     },
