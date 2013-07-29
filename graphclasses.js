@@ -1,4 +1,10 @@
 //-------------------------------------------------------------
+var TYPE = {
+  RELATIONSHIP: 1,
+  CHILDHUB:     2,
+  PERSON:       3,
+  VIRTUALEDGE:  4
+};
 
 InternalGraph = function() {
     this.v        = [];  // for each V lists (as unordered arrays of ids) vertices connected from V
@@ -15,39 +21,57 @@ InternalGraph = function() {
     this.numRealVertices = 0;
 
     this.vWidth = [];
-    this.defaultNodeWidth = 0;
+    this.defaultNonPersonNodeWidth = 0;
+
+    this.type       = [];  // for each V node type (see TYPE)
+    this.properties = [];  // for each V a set of type-specific properties {"sex": "m"/"f"/"u", etc.}
 };
 
 InternalGraph.prototype = {
 
     //-[construction from user input]-----------------------
-    /*
-    var sampleInputG = [
-        { name :'a', outedges: [ {to: 'b', weight: 1}, {to: 'f', weight: 1}, {to: 'e', weight: 1} ], width: 10 },
-        { name :'b', outedges: [ {to: 'c', weight: 1} ], width: 10 },
-        { name :'c', outedges: [ {to: 'd', weight: 2} ], width: 10 },
-        { name :'d', outedges: [ {to: 'h', weight: 1} ], width: 10 },
-        { name :'e', outedges: [ {to: 'g', weight: 1} ], width: 10 },
-        { name :'f', outedges: [ {to: 'g', weight: 1} ], width: 10 },
-        { name :'g', outedges: [ {to: 'h', weight: 1} ], width: 10 },
-        { name :'h', width: 10 }
-    ];
-    */
-    init_from_user_graph: function(inputG, defaultNodeWidth) {
-        // TODO: auto-create child nodes form relationship nodes
+    init_from_user_graph: function(inputG, defaultPersonNodeWidth, defaultNonPersonNodeWidth) {
 
         for (var v = 0; v < inputG.length; v++) {
+            var properties = {};
+
+            var type = TYPE.PERSON;
+            if ( inputG[v].hasOwnProperty('relationship') || inputG[v].hasOwnProperty('rel') )
+                type = TYPE.RELATIONSHIP;
+
+            if ( type == TYPE.PERSON ) {
+                properties["sex"] = "u";
+                if (inputG[v].hasOwnProperty("sex")) {
+                     if( inputG[v]["sex"] == "female" || inputG[v]["sex"] == "fem" || inputG[v]["sex"] == "f")
+                        properties["sex"] = "f";
+                    else if( inputG[v]["sex"] == "male" || inputG[v]["sex"] == "m")
+                        properties["sex"] = "m";
+                }
+            }
+
             var width = inputG[v].hasOwnProperty('width') ?
                         inputG[v].width :
-                        defaultNodeWidth;
+                        (type == TYPE.PERSON ? defaultPersonNodeWidth : defaultNonPersonNodeWidth);
 
-            this._addVertex( inputG[v].name, null, width );   // id is not known yet
+            this._addVertex( inputG[v].name, null, type, properties, width );   // "null" since id is not known yet
+
+            if ( type == TYPE.RELATIONSHIP )
+                this._addVertex( "chhub_" + inputG[v].name, null, TYPE.CHILDHUB, null, width );
         }
 
         for (var v = 0; v < inputG.length; v++) {
             var nextV = inputG[v];
 
-            var vID = this.getVertexIdByName( nextV.name );
+            var vID    = this.getVertexIdByName( nextV.name );
+            var origID = vID;
+
+            if (this.type[vID] == TYPE.RELATIONSHIP) {
+                // replace edges from rel node by edges from childhub node
+                var childhubID = this.getVertexIdByName( "chhub_" + nextV.name );
+                vID = childhubID;
+            }
+
+            var maxChildEdgeWeight = 0;
 
             if (nextV.outedges) {
                 for (var outE = 0; outE < nextV.outedges.length; outE++) {
@@ -56,10 +80,17 @@ InternalGraph.prototype = {
                     if (nextV.outedges[outE].hasOwnProperty('weight'))
                         weight = nextV.outedges[outE].weight;
 
+                    if ( weight > maxChildEdgeWeight )
+                        maxChildEdgeWeight = weight;
+
                     var targetID   = this.getVertexIdByName( targetName );
 
                     this._addEdge( vID, targetID, weight );
                 }
+            }
+
+            if (this.type[origID] == TYPE.RELATIONSHIP) {
+                this._addEdge( origID, vID, maxChildEdgeWeight );
             }
         }
 
@@ -78,7 +109,7 @@ InternalGraph.prototype = {
 
         this.numRealVertices = this.v.length;    // used during later stages to separate real vertices from virtual-multi-rank-edge-breaking ones
 
-        this.defaultNodeWidth = defaultNodeWidth;
+        this.defaultNonPersonNodeWidth = defaultNonPersonNodeWidth;
 
         this.validate();
     },
@@ -96,17 +127,17 @@ InternalGraph.prototype = {
     // Note: ranks is modified to contain ranks of virtual nodes as well
 
     makeGWithSplitMultiRankEdges: function (ranks, maxRank, virtualNodeWidth) {
-        if (!virtualNodeWidth) virtualNodeWidth = this.defaultNodeWidth;
+        if (!virtualNodeWidth) virtualNodeWidth = this.defaultNonPersonNodeWidth;
 
         var newG = new InternalGraph();
 
         newG.numRealVertices = this.numRealVertices;
 
-        newG.defaultNodeWidth = virtualNodeWidth;
+        newG.defaultNonPersonNodeWidth = virtualNodeWidth;
 
         // add all original vertices
         for (var i = 0; i < this.idToName.length; i++) {
-            newG._addVertex( this.idToName[i], i, this.vWidth[i] );
+            newG._addVertex( this.idToName[i], i, this.type[i], this.properties[i], this.vWidth[i] );
         }
 
         // go over all original edges:
@@ -123,7 +154,10 @@ InternalGraph.prototype = {
 
                 var targetRank = ranks[targetV];
 
-                if (targetRank >= sourceRank - 1 && targetRank <= sourceRank + 1) {
+                if (targetRank < sourceRank)
+                    throw "Assertion failed: only forward edges";
+
+                if (targetRank == sourceRank + 1) {
                     newG._addEdge( sourceV, targetV, weight );
                 }
                 else {
@@ -131,26 +165,14 @@ InternalGraph.prototype = {
                     var targetName = this.getVertexNameById(targetV);
 
                     // create virtual vertices & edges
-                    if (targetRank > sourceRank) {
-                        var prevV = sourceV;
-                        for (var midRank = sourceRank+1; midRank < targetRank; midRank++) {
-                            var nextV = newG._addVertex( sourceName + '->' + targetName + '_' + (midRank-sourceRank-1));
-                            ranks[nextV] = midRank;
-                            newG._addEdge( prevV, nextV, weight);
-                            prevV = nextV;
-                        }
-                        newG._addEdge(prevV, targetV, weight);
+                    var prevV = sourceV;
+                    for (var midRank = sourceRank+1; midRank < targetRank; midRank++) {
+                        var nextV = newG._addVertex( sourceName + '->' + targetName + '_' + (midRank-sourceRank-1), null, TYPE.VIRTUALEDGE, null, this.defaultNonPersonNodeWidth);
+                        ranks[nextV] = midRank;
+                        newG._addEdge( prevV, nextV, weight );
+                        prevV = nextV;
                     }
-                    else {
-                        var prevV = targetV;
-                        for (var midRank = targetRank-1; midRank > sourceRank; midRank--) {
-                            var nextV = newG._addVertex( sourceName + '->' + targetName + '_' + (midRank-targetRank+1));
-                            ranks[nextV] = midRank;
-                            newG._addEdge( prevV, nextV, weight);
-                            prevV = nextV;
-                        }
-                        newG._addEdge(prevV, sourceV, weight);
-                    }
+                    newG._addEdge(prevV, targetV, weight);
                 }
             }
         }
@@ -165,7 +187,7 @@ InternalGraph.prototype = {
     //--------------------------[construction for ordering]-
 
     // id: optional. If not given next available is used.
-    _addVertex: function(name, id, width) {
+    _addVertex: function(name, id, type, properties, width) {
         if (this.nameToId.hasOwnProperty(name)) throw "addVertex: [" + name + "] is already in G";
         if (id && this.idToName[id]) throw "addVertex: vertex with id=" + id + " is already in G";
 
@@ -181,7 +203,11 @@ InternalGraph.prototype = {
 
         this.nameToId[name] = nextId;
 
-        this.vWidth[nextId] = width ? width : this.defaultNodeWidth;
+        this.vWidth[nextId] = width;
+
+        this.type[nextId] = type;
+
+        this.properties[nextId] = properties;
 
         return nextId;
     },
@@ -228,8 +254,9 @@ InternalGraph.prototype = {
         // throw "Assertion failed: exactly 2 parents per relationship";
         // nodes only have edges to relationships
         // relationships must have only edges to child nodes (exactly one?)
-        // child nodes only edges to people
-        // assumption: no self-edges (all checks are removed in the code for speed, e.g. in edge_crossing)
+        // childhub nodes only have edges to "person" nodes
+        // all childhub nodes should have at least one child (or re-ranking relationship nodes breaks)
+        // assumption: no self-edges (all checks are removed in the code for performance reasons, e.g. in edge_crossing)
     },
 
     getVertexIdByName: function(name) {
@@ -286,16 +313,13 @@ InternalGraph.prototype = {
         var outEdges = this.getOutEdges(v);
         for (var i = 0; i < outEdges.length; i++) {
             var u = outEdges[i];
-            edgeToWeight[u] = this.weights[v][u];
+            edgeToWeight[u] = {"weight": this.weights[v][u], "out": true };
         }
 
         var inEdges = this.getInEdges(v);
         for (var i = 0; i < inEdges.length; i++) {
             var u = inEdges[i];
-            if (edgeToWeight.hasOwnProperty(u))
-                edgeToWeight[u] += this.weights[u][v];
-            else
-                edgeToWeight[u] = this.weights[u][v];
+            edgeToWeight[u] = {"weight": this.weights[u][v], "out": false };
         }
 
         return edgeToWeight;
@@ -303,16 +327,20 @@ InternalGraph.prototype = {
 
 	isRelationship: function(v) {
         // TODO
-	    return (this.getVertexNameById(v).charAt(0) == 'p');
+	    return (this.type[v] == TYPE.RELATIONSHIP || this.getVertexNameById(v).charAt(0) == 'p');
 	},
 
 	isChildhub: function(v) {
         // TODO
-	    return (this.getVertexNameById(v).charAt(0) == 'c');
+	    return (this.type[v] == TYPE.CHILDHUB || this.getVertexNameById(v).indexOf('chhub') == 0);
 	},
 
 	isPerson: function(v) {
 	    return (v <= this.getMaxRealVertexId() && !this.isRelationship(v) && !this.isChildhub(v));
+	},
+
+	isVirtual: function(v) {
+        return (v > this.getMaxRealVertexId());
 	},
 
 	getParents: function(v) {
@@ -537,6 +565,10 @@ Score.prototype = {
         if (! this.inEdgeMaxLen[u] || length > this.inEdgeMaxLen[u]) {
             this.inEdgeMaxLen[u] = length;
         }
+
+        for (var i = 0; i < u; i++)
+            if ( this.inEdgeMaxLen[i] === undefined )
+                this.inEdgeMaxLen[i] = 0;
     },
 
     isBettertThan: function(otherScore) {
@@ -544,12 +576,17 @@ Score.prototype = {
             if (this.numStraightLong == otherScore.numStraightLong) {
                 // if score is the same the arrangements with smaller sum of
                 // longest in-edges wins
-                if (this.inEdgeMaxLen.length == 0 || otherScore.inEdgeMaxLen.length == 0 ) {
-                    printObject(this);
-                    printObject(otherScore);
-                }
-                return (this.inEdgeMaxLen.reduce(function(a,b){return a+b;}) <
-                        otherScore.inEdgeMaxLen.reduce(function(a,b){return a+b;}));
+                //if (this.inEdgeMaxLen.length == 0 || otherScore.inEdgeMaxLen.length == 0 ) {
+                //    printObject(this);
+                //    printObject(otherScore);
+                //}
+                var score1 = this.inEdgeMaxLen.reduce(function(a,b){return a+b;});
+                var score2 = otherScore.inEdgeMaxLen.reduce(function(a,b){return a+b;});
+
+                if (score1 == score2)
+                    return (Math.max.apply(null,this.inEdgeMaxLen) < Math.max.apply(null,otherScore.inEdgeMaxLen)); // given everything else equal, prefer layout with shorter longest edge
+
+                return (score1 < score2); // prefer layout with smaller total edge length
             }
             return (this.numStraightLong > otherScore.numStraightLong);
         }
@@ -603,7 +640,7 @@ function permute2DArrayInFirstDimension (permutations, array, from) {
    var len = array.length;
 
    if (from == len-1) {
-       //if ( len == 1 || Math.max.apply(null, array[0]) < Math.max.apply(null, array[len-1]) )   // discard mirror copies of other permutations
+       if ( len == 1 || Math.max.apply(null, array[0]) < Math.max.apply(null, array[len-1]) )   // discard mirror copies of other permutations
            permutations.push(_makeFlattened2DArrayCopy(array));
        return;
    }
@@ -614,4 +651,36 @@ function permute2DArrayInFirstDimension (permutations, array, from) {
       swap(array, from, j);
    }
 }
+
+
+
+// used for profiling code
+Timer = function() {
+    var startTime = new Date().getTime();
+    var lastCheck = startTime;
+    var runTime   = 0;
+};
+
+Timer.prototype = {
+
+    start: function() {
+        this.startTime = new Date().getTime();
+        this.lastCheck = this.startTime;
+    },
+
+    stop: function() {
+        this.runTime = new Date().getTime() - begin;
+    },
+
+    stopAndPrint: function( msg ) {
+        console.log( msg + runTime + "ms" );
+    },
+
+    printSinceLast: function( msg ) {
+        var current = new Date().getTime();
+        var elapsed = current - this.lastCheck;
+        this.lastCheck = current;
+        console.log( msg + elapsed + "ms" );
+    },
+};
 
