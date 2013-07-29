@@ -20,31 +20,26 @@
             //            TODO: add a check (no edge crossings)
 
             var inputG = [
-                { name :'f11', outedges: [ {to: 'p1'} ], width: 20 },
-                { name :'m11', outedges: [ {to: 'p1'} ], width: 20 },
-                { name :'f12', outedges: [ {to: 'p2'}, {to:'p4'} ], width: 20 },
-                { name :'m12', outedges: [ {to: 'p2'} ], width: 20 },
-                { name :'m21', width: 20 },
-                { name :'m22', outedges: [ {to: 'p3'} ], width: 20 },
-                { name :'f21', outedges: [ {to: 'p3'} ], width: 20 },
-                { name :'m23', width: 20 },
-                { name :'m31', outedges: [ {to: 'p4'} ], width: 20 },
-                { name :'f41', width: 20 },
-                { name :'m41', width: 20 },
-
-                { name :'p1',  outedges: [ {to: 'chhub1'} ], width: 10 },
-                { name :'chhub1', outedges: [ {to: 'm21'},{to: 'm22'} ], width: 10 },
-                { name :'p2',  outedges: [ {to: 'chhub2'} ], width: 10 },
-                { name :'chhub2', outedges: [ {to: 'f21'},{to: 'm23'} ], width: 10 },
-                { name :'p3',  outedges: [ {to: 'chhub3'} ], width: 10 },
-                { name :'chhub3', outedges: [ {to: 'm31'} ], width: 10 },
-                { name :'p4',  outedges: [ {to: 'chhub4'} ], width: 10 },
-                { name :'chhub4', outedges: [ {to: 'f41'},{to: 'm41'} ], width: 10 }
+                { name :'f11', outedges: [ {to: 'p1'} ], sex: "female" },
+                { name :'m11', outedges: [ {to: 'p1'} ], sex: "male" },
+                { name :'f12', outedges: [ {to: 'p2'}, {to:'p4'} ], sex: "female" },
+                { name :'m12', outedges: [ {to: 'p2'} ], sex: "male" },
+                { name :'m21', sex: "male" },
+                { name :'m22', outedges: [ {to: 'p3'} ], sex: "male" },
+                { name :'f21', outedges: [ {to: 'p3'} ], sex: "female" },
+                { name :'m23', sex: "male" },
+                { name :'m31', outedges: [ {to: 'p4'} ], sex: "male" },
+                { name :'f41', sex: "female" },
+                { name :'m41', sex: "male" },
+                { name :'p1', outedges: [ {to: 'm21'},{to: 'm22'} ], relationship: true },
+                { name :'p2', outedges: [ {to: 'f21'},{to: 'm23'} ], relationship: true },
+                { name :'p3', outedges: [ {to: 'm31'} ], relationship: true },
+                { name :'p4', outedges: [ {to: 'f41'},{to: 'm41'} ], relationship: true }
             ];
 
             var G = new InternalGraph();
 
-            G.init_from_user_graph(inputG, 10);
+            G.init_from_user_graph(inputG, 10, 2);
 
             display_raw_graph(G, 'input');
 
@@ -63,3 +58,4 @@
     <div id="output"></div>
 </body>
 </html>
+

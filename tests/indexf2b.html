@@ -15,40 +15,35 @@
     <script type="text/javascript">
         function showGraph()
         {
-            // TESTCASE2: 2(+1) generations with brother-sister-brother-sister (minimum one edge crossing)
-            //            plus a side relationship which should be correctly laid out with no edge crosses
-            //            TODO: add a check for at most one crossed edge
-            //            TODO: add a check that m3 is correctly ranked on the same level with ch3
+            // TESTCASE2B: 2(+1) generations with brother-sister-brother-sister (minimum one edge crossing)
+            //             plus a side relationship which should be correctly laid out with no edge crosses
+            //             TODO: add a check for at most one crossed edge
+            //             TODO: add a check that m3 is correctly ranked on the same level with ch3
 
-            var inputG = [                                
-                { name :'f1', outedges: [ {to: 'p1'} ], width: 20 },
-                { name :'m1', outedges: [ {to: 'p1'} ], width: 20 },
-                { name :'p1',  outedges: [ {to: 'chhub1'} ], width: 10 },
-                { name :'chhub1', outedges: [ {to: 'ch1'},{to: 'ch2'},{to: 'ch3'} ], width: 10 },
-                { name :'f2', outedges: [ {to: 'p2'} ], width: 20 },
-                { name :'m2', outedges: [ {to: 'p2'} ], width: 20 },
-                { name :'p2',  outedges: [ {to: 'chhub2'} ], width: 10 },
-                { name :'chhub2', outedges: [ {to: 'ch4'},{to: 'ch5'} ], width: 10 },
-                { name :'ch1', outedges: [ {to: 'p3'} ], width: 20 },
-                { name :'ch4', outedges: [ {to: 'p3'} ], width: 20 },
-                { name :'p3',  outedges: [ {to: 'chhub3'} ], width: 10 },
-                { name :'chhub3', outedges: [ {to: 'ch6'} ], width: 10 },
-                { name :'ch2', outedges: [ {to: 'p4'} ], width: 20 },
-                { name :'ch3', outedges: [ {to: 'p5'} ], width: 20 },
-                { name :'ch5', outedges: [ {to: 'p4'} ], width: 20 },
-                { name :'ch6', width: 20 },
-                { name :'p4', outedges: [ {to: 'chhub4'} ], width: 10 },
-                { name :'chhub4', outedges: [ {to: 'ch8'} ], width: 10 },
-                { name :'m3', outedges: [ {to: 'p5'} ], width: 20 },
-                { name :'p5', outedges: [ {to: 'chhub5'} ], width: 10 },
-                { name :'chhub5', outedges: [ {to: 'ch7'} ], width: 10 },
-                { name :'ch7', width: 20 },
-                { name :'ch8', width: 20 }
+            var inputG = [
+                { name :'f1', outedges: [ {to: 'p1'} ], sex: "female" },
+                { name :'m1', outedges: [ {to: 'p1'} ], sex: "male" },
+                { name :'p1', outedges: [ {to: 'ch1'},{to: 'ch2'},{to: 'ch3'} ], relationship: true },
+                { name :'f2', outedges: [ {to: 'p2'} ], sex: "female" },
+                { name :'m2', outedges: [ {to: 'p2'} ], sex: "male" },
+                { name :'p2', outedges: [ {to: 'ch4'},{to: 'ch5'} ], relationship: true },
+                { name :'ch1', outedges: [ {to: 'p3'} ], sex: "male" },
+                { name :'ch4', outedges: [ {to: 'p3'} ], sex: "male" },
+                { name :'p3', outedges: [ {to: 'ch6'} ], relationship: true },
+                { name :'ch2', outedges: [ {to: 'p4'} ], sex: "male" },
+                { name :'ch3', outedges: [ {to: 'p5'} ], sex: "male" },
+                { name :'ch5', outedges: [ {to: 'p4'} ], sex: "male" },
+                { name :'ch6', sex: "male" },
+                { name :'p4', outedges: [ {to: 'ch8'} ], relationship: true },
+                { name :'m3', outedges: [ {to: 'p5'} ], sex: "male" },
+                { name :'p5', outedges: [ {to: 'ch7'} ], relationship: true },
+                { name :'ch7', sex: "male" },
+                { name :'ch8', sex: "male" }
             ];
 
             var G = new InternalGraph();
 
-            G.init_from_user_graph(inputG, 10);
+            G.init_from_user_graph(inputG, 10, 2);
 
             display_raw_graph(G, 'input');
 
@@ -67,3 +62,4 @@
     <div id="output"></div>
 </body>
 </html>
+

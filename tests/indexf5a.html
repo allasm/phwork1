@@ -22,27 +22,24 @@
             //             (testcase 5b includes this entire pedigree as a subset)
 
             var inputG = [
-                { name :'m12', outedges: [ {to: 'p2'} ], width: 20 },
-                { name :'f12', outedges: [ {to: 'p2'} ], width: 20 },
-                { name :'m33', width: 20 },
-                { name :'m34', outedges: [ {to: 'p4'} ], width: 20 },
-                { name :'f31', outedges: [ {to: 'p4'} ], width: 20 },
-                { name :'f41', outedges: [ {to: 'p5'} ], width: 20 },
-                { name :'m41', outedges: [ {to: 'p5'} ], width: 20 },
-                { name :'m42', width: 20 },
-                { name :'f51', width: 20 },
-                { name :'m51', width: 20 },
-                { name :'p2',  outedges: [ {to: 'chhub2'} ], width: 10 },
-                { name :'chhub2', outedges: [ {to: 'm33'}, {to: 'm34'} ], width: 10 },
-                { name :'p4',  outedges: [ {to: 'chhub4'} ], width: 10 },
-                { name :'chhub4', outedges: [ {to: 'm41'}, {to: 'm42'} ], width: 10 },
-                { name :'p5',  outedges: [ {to: 'chhub5'} ], width: 10 },
-                { name :'chhub5', outedges: [ {to: 'f51'}, {to: 'm51'} ], width: 10 }
+                { name :'m12', outedges: [ {to: 'p2'} ], sex: "male" },
+                { name :'f12', outedges: [ {to: 'p2'} ], sex: "female" },
+                { name :'m33', sex: "male" },
+                { name :'m34', outedges: [ {to: 'p4'} ], sex: "male" },
+                { name :'f31', outedges: [ {to: 'p4'} ], sex: "female" },
+                { name :'f41', outedges: [ {to: 'p5'} ], sex: "female" },
+                { name :'m41', outedges: [ {to: 'p5'} ], sex: "male" },
+                { name :'m42', sex: "male" },
+                { name :'f51', sex: "female" },
+                { name :'m51', sex: "male" },
+                { name :'p2', outedges: [ {to: 'm33'}, {to: 'm34'} ], relationship: true },
+                { name :'p4', outedges: [ {to: 'm41'}, {to: 'm42'} ], relationship: true },
+                { name :'p5', outedges: [ {to: 'f51'}, {to: 'm51'} ], relationship: true }
             ];
 
             var G = new InternalGraph();
 
-            G.init_from_user_graph(inputG, 10);
+            G.init_from_user_graph(inputG, 10, 2);
 
             display_raw_graph(G, 'input');
 
@@ -61,3 +58,4 @@
     <div id="output"></div>
 </body>
 </html>
+

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta content="utf-8" http-equiv="encoding">
+
+    <script type="text/javascript" src="../libs/raphael.js"></script>
+
+    <script type="text/javascript" src="../graphdisplay.js"></script>
+    <script type="text/javascript" src="../queues.js"></script>
+    <script type="text/javascript" src="../graphclasses.js"></script>
+    <script type="text/javascript" src="../xcoordclass.js"></script>
+    <script type="text/javascript" src="../graphplot.js"></script>
+
+    <script type="text/javascript">
+        function showGraph()
+        {
+            // TESTCASE1: 2(+1) generations, 3 families where both families A and C are linked to B at generation 2 level.
+            //            TODO: add a check that there are no crossed edges
+            //            TODO: add a check that all relationship nodes are on the same level with parents
+
+            var inputG = [
+                { name :'f11', outedges: [ {to: 'p1'} ], sex: "female" },
+                { name :'m11', outedges: [ {to: 'p1'} ], sex: "male" },
+                { name :'p1', outedges: [ {to: 'ch1'},{to: 'ch2'},{to: 'ch3'} ], relationship: true },
+                { name :'f13', outedges: [ {to: 'p3'} ], sex: "female" },
+                { name :'m13', outedges: [ {to: 'p3'} ], sex: "male" },
+                { name :'p3', outedges: [ {to: 'ch7'},{to: 'ch8'},{to: 'ch9'} ], relationship: true },
+                { name :'f12', outedges: [ {to: 'p2'} ], sex: "female" },
+                { name :'m12', outedges: [ {to: 'p2'} ], sex: "male" },
+                { name :'p2', outedges: [ {to: 'ch4'},{to: 'ch5'},{to: 'ch6'} ], relationship: true },
+                { name :'ch2', outedges: [ {to: 'p4'} ], sex: "female" },
+                { name :'ch5', outedges: [ {to: 'p4'} ], sex: "male" },
+                { name :'p4', outedges: [ {to: 'leaf1'} ], relationship: true },
+                { name :'ch4', outedges: [ {to: 'p5'} ], sex: "female" },
+                { name :'ch9', outedges: [ {to: 'p5'} ], sex: "male" },
+                { name :'p5', outedges: [ {to: 'leaf2'} ], relationship: true },
+                { name :'ch1', sex: "male" },
+                { name :'ch3', sex: "male" },
+                { name :'ch6', sex: "male" },
+                { name :'ch7', sex: "male" },
+                { name :'ch8', sex: "male" },
+                { name :'leaf1', sex: "male" },
+                { name :'leaf2', sex: "male" }
+            ];
+
+            var G = new InternalGraph();
+
+            G.init_from_user_graph(inputG, 10, 2);
+
+            display_raw_graph(G, 'input');
+
+            var layoutG = draw_graph(G);
+
+            display_processed_graph(layoutG, 'output');
+        }
+    </script>
+
+</head>
+<body onload="showGraph()">
+    Input Graph:
+    <div id="input"></div>
+    <br>
+    Output:
+    <div id="output"></div>
+</body>
+</html>
+

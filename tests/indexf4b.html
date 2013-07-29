@@ -15,19 +15,21 @@
     <script type="text/javascript">
         function showGraph()
         {
-            // TESTCASE4: 3 relationships per person. Edge crossings: 0 when drawn above, 1 when drawn below. TODO: which way is better/allowed
+            // TESTCASE4b: "I'm my own grandpa"
 
             var inputG = [
-                { name :'m11', outedges: [ {to: 'p1'} ], sex: "male" },
-                { name :'f11', outedges: [ {to: 'p1'},{to: 'p2'},{to: 'p3'} ], sex: "female" },
-                { name :'m12', outedges: [ {to: 'p2'} ], sex: "male" },
-                { name :'m13', outedges: [ {to: 'p3'} ], sex: "male" },
-                { name :'m21' },
-                { name :'m22' },
-                { name :'m23' },
-                { name :'p1', outedges: [ {to: 'm21'} ], relationship: true },
-                { name :'p2', outedges: [ {to: 'm22'} ], relationship: true },
-                { name :'p3', outedges: [ {to: 'm23'} ], relationship: true }
+                { name :'1', outedges: [ {to: 'p1'} ], sex: "male" },
+                { name :'2', outedges: [ {to: 'p1'}, {to: 'p3'} ], sex: "female" },
+                { name :'3', outedges: [ {to: 'p2'} ], sex: "female" },
+                { name :'4', outedges: [ {to: 'p2'}, {to: 'p4'} ], sex: "male" },
+                { name :'5', outedges: [ {to: 'p4'} ], sex: "female" },
+                { name :'6', outedges: [ {to: 'p3'} ], sex: "male" },
+                { name :'7', sex: "male" },
+                { name :'8', sex: "male" },
+                { name :'p1', outedges: [ {to: '5'} ], relationship: true },
+                { name :'p2', outedges: [ {to: '6'} ], relationship: true },
+                { name :'p3', outedges: [ {to: '7'} ], relationship: true },
+                { name :'p4', outedges: [ {to: '8'} ], relationship: true }
             ];
 
             var G = new InternalGraph();
