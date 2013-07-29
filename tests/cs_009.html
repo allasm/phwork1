@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta content="utf-8" http-equiv="encoding">
+
+    <script type="text/javascript" src="../libs/raphael.js"></script>
+
+    <script type="text/javascript" src="../graphdisplay.js"></script>
+    <script type="text/javascript" src="../queues.js"></script>
+    <script type="text/javascript" src="../graphclasses.js"></script>
+    <script type="text/javascript" src="../xcoordclass.js"></script>
+    <script type="text/javascript" src="../graphplot.js"></script>
+
+    <script type="text/javascript">
+        function showGraph()
+        {
+            // CS_009 from Madeline test suite
+
+            var inputG = [
+                { name :'68', outedges: [ {to: 'p1'} ], sex: "male" },
+                { name :'69', outedges: [ {to: 'p1'} ], sex: "female" },
+                { name :'p1', outedges: [ {to: '70'},{to: '71'} ], relationship: true },
+                { name :'70', outedges: [ {to: 'p2'} ], sex: "male" },
+                { name :'71', outedges: [ {to: 'p3'} ], sex: "female" },
+                { name :'72', outedges: [ {to: 'p2'} ], sex: "female" },
+                { name :'75', outedges: [ {to: 'p3'} ], sex: "male" },
+                { name :'p2', outedges: [ {to: '74'}, {to: '73'} ], relationship: true },
+                { name :'p3', outedges: [ {to: '76'}, {to: '77'} ], relationship: true },
+                { name :'81', outedges: [ {to: 'p5'} ], sex: "male" },
+                { name :'78', outedges: [ {to: 'p4'} ], sex: "female" },
+                { name :'73', outedges: [ {to: 'p4'} ], sex: "male" },
+                { name :'77', outedges: [ {to: 'p5'} ], sex: "female" },
+                { name :'74', sex: "female" },
+                { name :'76', sex: "male" },
+                { name :'p4', outedges: [ {to: '80'}, {to: '79'} ], relationship: true },
+                { name :'p5', outedges: [ {to: '82'}, {to: '83'} ], relationship: true },
+                { name :'88', outedges: [ {to: 'p7'} ], sex: "female" },
+                { name :'84', outedges: [ {to: 'p6'} ], sex: "male" },
+                { name :'82', outedges: [ {to: 'p7'} ], sex: "male" },
+                { name :'80', outedges: [ {to: 'p6'} ], sex: "female" },
+                { name :'79', sex: "male" },
+                { name :'83', sex: "female" },
+                { name :'p6', outedges: [ {to: '85'}, {to: '86'}, {to: '87'} ], relationship: true },
+                { name :'p7', outedges: [ {to: '89'}, {to: '90'}, {to: '91'}, {to: '92'} ], relationship: true },
+                { name :'91', outedges: [ {to: 'p8'} ], sex: "male" },
+                { name :'86', outedges: [ {to: 'p8'} ], sex: "female" },
+                { name :'85', sex: "female" },
+                { name :'87', sex: "female" },
+                { name :'89', sex: "male" },
+                { name :'90', sex: "male" },
+                { name :'92', sex: "male" },
+                { name :'p8', outedges: [ {to: '94'}, {to: '95'}, {to: '96'} ], relationship: true },
+                { name :'94', sex: "male" },
+                { name :'95', sex: "male" },
+                { name :'96', sex: "female" }
+            ];
+
+            var G = new InternalGraph();
+
+            G.init_from_user_graph(inputG, 10, 2);
+
+            display_raw_graph(G, 'input');
+
+            var layoutG = draw_graph(G);
+
+            display_processed_graph(layoutG, 'output');
+        }
+    </script>
+
+</head>
+<body onload="showGraph()">
+    Input Graph:
+    <div id="input"></div>
+    <br>
+    Output:
+    <div id="output"></div>
+</body>
+</html>
+
