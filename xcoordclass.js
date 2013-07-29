@@ -1,19 +1,24 @@
 XCoord = function() {
     this.xcoord = [] ; // coordinates of _center_ of every vertex
 
-    // local copies just for convenience
-    this.halfWidth                = [];
-    this.horizontalSeparationDist = undefined;
-    this.order                    = undefined;
-    this.ranks                    = undefined;
+    // local copies just for convenience & performance
+    this.halfWidth = [];
+
+    this.horizPersSeparationDist = undefined;
+    this.horizRelSeparationDist  = undefined;
+
+    this.order = undefined;
+    this.ranks = undefined;
+    this.type  = undefined;
 };
 
 XCoord.prototype = {
 
-    init: function (xinit, horizontalSeparationDist, widths, order, ranks) {
+    init: function (xinit, horizontalPersonSeparationDist, horizontalRelSeparationDist, widths, order, ranks, type) {
         this.xcoord = xinit;
 
-        this.horizontalSeparationDist = horizontalSeparationDist;
+        this.horizPersSeparationDist = horizontalPersonSeparationDist;
+        this.horizRelSeparationDist  = horizontalRelSeparationDist;
 
         for (var i = 0; i < widths.length; i++)
             this.halfWidth[i] = Math.floor(widths[i]/2);
@@ -21,6 +26,8 @@ XCoord.prototype = {
         this.order = order;
 
         this.ranks = ranks;
+
+        this.type  = type;
     },
 
     getLeftMostNoDisturbPosition: function(v) {
@@ -29,7 +36,12 @@ XCoord.prototype = {
         var order = this.order.vOrder[v];
         if ( order > 0 ) {
             var leftNeighbour = this.order.order[this.ranks[v]][order-1];
-            leftBoundary += this.getRightEdge(leftNeighbour) + this.horizontalSeparationDist;
+
+            var separation = this.horizPersSeparationDist;
+            //if (this.type[v] == TYPE.RELATIONSHIP || this.type[leftNeighbour] == TYPE.RELATIONSHIP)
+            //    separation = this.horizRelSeparationDist;
+
+            leftBoundary += this.getRightEdge(leftNeighbour) + separation;
         }
 
         return leftBoundary;
@@ -41,7 +53,7 @@ XCoord.prototype = {
         var order = this.order.vOrder[v];
         if ( order < this.order.order[this.ranks[v]].length-1 ) {
             var rightNeighbour = this.order.order[this.ranks[v]][order+1];
-            rightBoundary = this.getLeftEdge(rightNeighbour) - this.horizontalSeparationDist - this.halfWidth[v];
+            rightBoundary = this.getLeftEdge(rightNeighbour) - this.horizPersSeparationDist - this.halfWidth[v];
         }
 
         return rightBoundary;
@@ -80,13 +92,13 @@ XCoord.prototype = {
         for (var i = order + 1; i < this.order.order[rank].length; i++) {
             var rightNeighbour = this.order.order[rank][i];
 
-            if (this.getLeftEdge(rightNeighbour) >= rightEdge + this.horizontalSeparationDist) {
+            if (this.getLeftEdge(rightNeighbour) >= rightEdge + this.horizPersSeparationDist) {
                 // we are not interfering with the vertex to the right
                 break;
 
             }
 
-            this.xcoord[rightNeighbour] = rightEdge + this.horizontalSeparationDist + this.halfWidth[rightNeighbour];
+            this.xcoord[rightNeighbour] = rightEdge + this.horizPersSeparationDist + this.halfWidth[rightNeighbour];
 
             rightEdge = this.getRightEdge(rightNeighbour);
         }
@@ -98,7 +110,7 @@ XCoord.prototype = {
         // finds the smallest margin on the left and shifts the entire graph to the left
         var minExtra = this.xcoord[0] - this.halfWidth[0];
         for (var i = 1; i < this.xcoord.length; i++) {
-            if (this.xcoord[i] < minExtra)
+            if ((this.xcoord[i] - this.halfWidth[i]) < minExtra)
                 minExtra = (this.xcoord[i] - this.halfWidth[i]);
         }
 
@@ -113,11 +125,30 @@ XCoord.prototype = {
 
         newX.xcoord = this.xcoord.slice(0);
 
-        newX.halfWidth                = this.halfWidth;
-        newX.horizontalSeparationDist = this.horizontalSeparationDist;
-        newX.order                    = this.order;
-        newX.ranks                    = this.ranks;
+        newX.halfWidth               = this.halfWidth;
+        newX.horizPersSeparationDist = this.horizPersSeparationDist;
+        newX.horizRelSeparationDist  = this.horizRelSeparationDist;
+        newX.order                   = this.order;
+        newX.ranks                   = this.ranks;
+        newX.type                    = this.type;
 
         return newX;
     }
 };
+
+
+
+
+VerticalLevels = function() {
+
+    this.rankVerticalLevels   = [];   // for each rank: how many "levels" of horizontal edges are between this and next ranks
+    this.childEdgeLevel       = [];   // for each "childhub" node contains the verticalLevelID to use for the child edges
+                                      // (where levelID is for levels between this and next ranks)
+    this.outEdgeVerticalLevel = [];   // for each "person" node contains outgoing relationship edge level as {target1: level1, t2: l2}
+                                      // (where levelID is for levels between this and previous ranks)
+};
+
+VerticalLevels.prototype = {
+
+};
+
