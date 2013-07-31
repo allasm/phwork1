@@ -249,14 +249,97 @@ InternalGraph.prototype = {
     },
 
     validate: function() {
-        // TODO: collect all assertions
+        for (var v = 0; v < this.v.length; v++) {
+            var outEdges = this.getOutEdges(v);
+            var inEdges  = this.getInEdges(v);
+
+            if (this.isPerson(v)) {
+                for (var i = 0; i < outEdges.length; i++)
+                    if (!this.isRelationship(outEdges[i]) && !this.isVirtual(outEdges[i]) )
+                        throw "Assertion failed: person nodes have only out edges to relationships (failed for " + this.getVertexNameById(v) + ")";
+            }
+            else if (this.isRelationship(v)) {
+                if (outEdges.length == 0)
+                    throw "Assertion failed: all relationships should have a childhub associated with them (failed for " + this.getVertexNameById(v) + ")";
+                if (outEdges.length > 1)
+                    throw "Assertion failed: all relationships should have only one outedge (to a childhub) (failed for " + this.getVertexNameById(v) + ")";
+                if (!this.isChildhub(outEdges[0]))
+                    throw "Assertion failed: relationships should only have out edges to childhubs (failed for " + this.getVertexNameById(v) + ")";
+                if (inEdges.length != 2)
+                    throw "Assertion failed: relationships should always have exactly two associated persons (failed for " + this.getVertexNameById(v) + ")";
+            }
+            else if (this.isVirtual(v)) {
+                if (outEdges.length != 1)
+                    throw "Assertion failed: all virtual nodes have exactly one out edge (to a virtual node or a relationship)";
+                if (inEdges.length != 1)
+                    throw "Assertion failed: all virtual nodes have exactly one in edge (from a person or a virtual node)";
+                if (!this.isRelationship(outEdges[0]) && !this.isVirtual(outEdges[0]) )
+                    throw "Assertion failed: all virtual nodes may only have an outedge to a virtual node or a relationship";
+            }
+            else if (this.isChildhub(v)) {
+                if (outEdges.length < 1)
+                    throw "Assertion failed: all childhubs should have at least one child associated with them";  // if not, re-ranking relationship nodes breaks
+                for (var i = 0; i < outEdges.length; i++)
+                    if (!this.isPerson(outEdges[i]))
+                        throw "Assertion failed: childhubs are only connected to people (failed for " + this.getVertexNameById(v) + ")";
+            }
+        }
+
         // check for cycles - supposedly pedigrees can't have any
-        // throw "Assertion failed: exactly 2 parents per relationship";
-        // nodes only have edges to relationships
-        // relationships must have only edges to child nodes (exactly one?)
-        // childhub nodes only have edges to "person" nodes
-        // all childhub nodes should have at least one child (or re-ranking relationship nodes breaks)
-        // assumption: no self-edges (all checks are removed in the code for performance reasons, e.g. in edge_crossing)
+        if (this.parentlessNodes.length == 0)
+            throw "Assertion failed: pedigrees should have no cycles (no parentless nodes found)";
+
+        for (var j = 0; j < this.parentlessNodes.length; j++) {
+            if ( this._DFSFindCycles( this.parentlessNodes[j], {} ) )
+                throw "Assertion failed: pedigrees should have no cycles";
+        }
+
+        // check for disconnected components
+        var reachable = {};
+        this._markAllReachableComponents( this.parentlessNodes[0], reachable );
+        for (var v = 0; v < this.v.length; v++) {
+            if (!reachable.hasOwnProperty(v))
+                throw "Assertion failed: disconnected component detected (" + this.getVertexNameById(v) + ")";
+        }
+
+    },
+
+    _DFSFindCycles: function( vertex, visited ) {
+        visited[vertex] = true;
+
+        var outEdges = this.getOutEdges(vertex);
+
+        for (var i = 0; i < outEdges.length; i++) {
+            var v = outEdges[i];
+
+            if ( visited.hasOwnProperty(v) ) {
+                return true;
+            }
+            else if (this._DFSFindCycles( v, visited )) {
+                return true;
+            }
+        }
+
+        delete visited[vertex];
+        return false;
+    },
+
+    _markAllReachableComponents: function( vertex, reachable ) {
+        reachable[vertex] = true;
+
+        var outEdges = this.getOutEdges(vertex);
+        for (var i = 0; i < outEdges.length; i++) {
+            var v = outEdges[i];
+            if ( !reachable.hasOwnProperty(v) )
+                this._markAllReachableComponents( v, reachable );
+        }
+
+        var inEdges = this.getInEdges(vertex);
+        for (var j = 0; j < inEdges.length; j++) {
+            var v = inEdges[j];
+            if ( !reachable.hasOwnProperty(v) )
+                this._markAllReachableComponents( v, reachable );
+        }
     },
 
     getVertexIdByName: function(name) {
@@ -327,16 +410,16 @@ InternalGraph.prototype = {
 
 	isRelationship: function(v) {
         // TODO
-	    return (this.type[v] == TYPE.RELATIONSHIP || this.getVertexNameById(v).charAt(0) == 'p');
+	    return (this.type[v] == TYPE.RELATIONSHIP);
 	},
 
 	isChildhub: function(v) {
         // TODO
-	    return (this.type[v] == TYPE.CHILDHUB || this.getVertexNameById(v).indexOf('chhub') == 0);
+	    return (this.type[v] == TYPE.CHILDHUB);
 	},
 
 	isPerson: function(v) {
-	    return (v <= this.getMaxRealVertexId() && !this.isRelationship(v) && !this.isChildhub(v));
+	    return (this.type[v] == TYPE.PERSON);
 	},
 
 	isVirtual: function(v) {
@@ -344,7 +427,9 @@ InternalGraph.prototype = {
 	},
 
 	getParents: function(v) {
-	    // TODO + checks + long edges
+	    if (!this.isPerson(v))
+	        throw "Assertion failed: attempting to get parents of a non-person";
+	    // TODO + checks + long edges (this only works on a graph with no virtual nodes)
 	    // skips through relationship and child nodes and returns an array of two real parents. If none found returns []
 	    if (this.inedges[v].length == 0)
 	        return [];
@@ -352,6 +437,8 @@ InternalGraph.prototype = {
 	},
 
 	getProducingRelationship: function(v) {
+	    if (!this.isPerson(v))
+	        throw "Assertion failed: attempting to get producing relationship of a non-person";
 	    // TODO + checks
 	    // find the relationship which produces this node (or null if not present)
 	    if (this.inedges[v].length == 0) return null;
@@ -539,60 +626,6 @@ Ordering.prototype = {
 	}
 };
 
-//==================================================================================================
-
-Score = function(maxRealVertexId) {
-    this.score           = 0;
-    this.inEdgeMaxLen    = [];
-    this.maxRealVertexId = maxRealVertexId;
-    this.numStraightLong = 0;
-};
-
-Score.prototype = {
-
-    add: function(amount) {
-        this.score += amount;
-    },
-
-    addEdge: function(v, u, length) {
-        if (u > this.maxRealVertexId) {
-            if (length == 0 && v > this.maxRealVertexId)
-                this.numStraightLong++;
-
-            length /= 2;
-        }
-
-        if (! this.inEdgeMaxLen[u] || length > this.inEdgeMaxLen[u]) {
-            this.inEdgeMaxLen[u] = length;
-        }
-
-        for (var i = 0; i < u; i++)
-            if ( this.inEdgeMaxLen[i] === undefined )
-                this.inEdgeMaxLen[i] = 0;
-    },
-
-    isBettertThan: function(otherScore) {
-        if (this.score == otherScore.score) {
-            if (this.numStraightLong == otherScore.numStraightLong) {
-                // if score is the same the arrangements with smaller sum of
-                // longest in-edges wins
-                //if (this.inEdgeMaxLen.length == 0 || otherScore.inEdgeMaxLen.length == 0 ) {
-                //    printObject(this);
-                //    printObject(otherScore);
-                //}
-                var score1 = this.inEdgeMaxLen.reduce(function(a,b){return a+b;});
-                var score2 = otherScore.inEdgeMaxLen.reduce(function(a,b){return a+b;});
-
-                if (score1 == score2)
-                    return (Math.max.apply(null,this.inEdgeMaxLen) < Math.max.apply(null,otherScore.inEdgeMaxLen)); // given everything else equal, prefer layout with shorter longest edge
-
-                return (score1 < score2); // prefer layout with smaller total edge length
-            }
-            return (this.numStraightLong > otherScore.numStraightLong);
-        }
-        return (this.score < otherScore.score);
-    }
-};
 
 //==================================================================================================
 
