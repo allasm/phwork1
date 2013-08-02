@@ -552,6 +552,13 @@ Ordering.prototype = {
         this.vOrder     = vOrder;
     },
 
+    insert: function(rank, insertOrder, vertex) {
+       this.order[rank].splice(insertOrder, 0, vertex);
+       this.vOrder[vertex] = insertOrder;
+       for (var next = insertOrder+1; next < this.order[rank].length; next++)
+           this.vOrder[ this.order[rank][next] ]++;
+    },
+
     exchange: function(rank, index1, index2) {
         // exchanges vertices at two given indices within the same given rank
 
@@ -622,6 +629,21 @@ Ordering.prototype = {
         for ( var i = oldOrder; i < this.order[oldRank].length; i++ ) {
             var nextV = this.order[oldRank][i];
             this.vOrder[nextV]--;
+        }
+	},
+
+    changeVertexOrder: function ( rank, oldOrder, newOrder ) {
+        var v = this.order[rank][oldOrder];
+
+        this.order[rank].splice(oldOrder, 1);
+
+        this.order[rank].splice(newOrder, 0, v);
+
+        this.vOrder[v] = newOrder;
+
+        for ( var i = newOrder+1; i < oldOrder; i++ ) {
+            var nextV = this.order[rank][i];
+            this.vOrder[nextV]++;
         }
 	}
 };
