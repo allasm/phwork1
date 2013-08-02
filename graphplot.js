@@ -277,14 +277,15 @@ DrawGraph.prototype = {
         var best                = undefined;
         var bestCrossings       = Infinity;
 
-        var permutationsRoots = this.computePossibleParentlessNodePermutations(maxInitOrderingBuckets);
+        var rootlessPartners  = this.findAllRootlessPartners();
+        var permutationsRoots = this.computePossibleParentlessNodePermutations(maxInitOrderingBuckets, rootlessPartners);
         var permutationsLeafs = this.computePossibleLeafNodePermutations(maxInitOrderingBuckets);
 
         var useStack = false;
 
         while ( true ) {
             for (var initOrderIter = 0; initOrderIter < permutationsRoots.length; initOrderIter++ ) {
-                order = this.init_order_top_to_bottom(permutationsRoots[initOrderIter], useStack);
+                order = this.init_order_top_to_bottom(permutationsRoots[initOrderIter], rootlessPartners, useStack);
 
                 this.transpose(order, false);  // fix locally-fixable edge crossings,
                                                // but do not bother doing minor optimizations (for performance reasons)
@@ -294,6 +295,7 @@ DrawGraph.prototype = {
                 if ( numCrossings < bestCrossings ) {
                     best          = order.copy();
                     bestCrossings = numCrossings;
+                    //console.log("UsingP: " + stringifyObject(permutationsRoots[initOrderIter]) + " " + useStack.toString());
                     if ( numCrossings == 0 ) break;
                 }
             }
@@ -310,6 +312,7 @@ DrawGraph.prototype = {
                 if ( numCrossings < bestCrossings ) {
                     best          = order.copy();
                     bestCrossings = numCrossings;
+                    //console.log("UsingL: " + stringifyObject(permutationsRoots[initOrderIter]) + " " + useStack.toString());
                     if ( numCrossings == 0 ) break;
                 }
             }
@@ -380,7 +383,37 @@ DrawGraph.prototype = {
         return best;
     },
 
-    computePossibleParentlessNodePermutations: function(maxInitOrderingBuckets)
+    findAllRootlessPartners: function ()
+    {
+        // finds all people without parents which are only connected to one non-rootless node.
+        // we know it should be placed right next to that partner in any optimal ordering
+
+        var rootlessPartners = {};
+
+        for (var i = 0; i < this.GG.parentlessNodes.length; i++) {
+            var v = this.GG.parentlessNodes[i];
+
+            if ( this.GG.getOutEdges(v).length == 1 ) {
+                var relationShipNode = this.GG.getOutEdges(v)[0];
+
+                var parents = this.GG.getInEdges(relationShipNode);
+
+                var otherParent = (parents[0] == v) ? parents[1] : parents[0];
+
+                if (this.GG.getInEdges(otherParent).length > 0) {
+                    if (rootlessPartners[otherParent])
+                        rootlessPartners[otherParent].push(v);
+                    else
+                        rootlessPartners[otherParent] = [v];
+                }
+            }
+        }
+
+        console.log("Found rootless partners: " + stringifyObject(rootlessPartners));
+        return rootlessPartners;
+    },
+
+    computePossibleParentlessNodePermutations: function(maxInitOrderingBuckets, rootlessPartners)
     {
         // 1) split all parentless nodes into at most maxInitOrderingBuckets groups/buckets
         // 2) compute all possible permutations of these groups discarding mirror copies (e.g. [1,2,3] and [3,2,1])
@@ -397,6 +430,15 @@ DrawGraph.prototype = {
         console.log("maxInitOrderingBuckets: " + maxInitOrderingBuckets);
 
         var handled = {};
+
+        for (var p in rootlessPartners) {
+            if (rootlessPartners.hasOwnProperty(p)) {
+                var rootless = rootlessPartners[p];
+                for (var i = 0; i < rootless.length; i++)
+                    handled[rootless[i]] = true;   // those nodes will be automatically added at correct ordering later
+            }
+        }
+
         var nextBucket = 0;
         for (var i = 0; i < this.GG.parentlessNodes.length; i++) {
             var v = this.GG.parentlessNodes[i];
@@ -409,17 +451,19 @@ DrawGraph.prototype = {
             buckets[nextBucket].push(v);
             handled[v] = true;
 
-            // find all nodes which are only connected to a relationship with V
-            for (var j = i+1; j < this.GG.parentlessNodes.length; j++) {
-                var u = this.GG.parentlessNodes[j];
-                if (handled.hasOwnProperty(u)) continue;
-                if ( this.GG.getOutEdges(u).length == 1 ) {
-                    var relationshipNode = this.GG.getOutEdges(u)[0];
-                    var parents = this.GG.getInEdges(relationshipNode);
-                    if (parents[0] == v || parents[1] == v)
-                    {
-                        buckets[nextBucket].push(u);
-                        handled[u] = true;
+            if ( this.GG.getOutEdges(v).length == 1 ) {
+                // find all nodes which are only connected to a relationship with V
+                for (var j = i+1; j < this.GG.parentlessNodes.length; j++) {
+                    var u = this.GG.parentlessNodes[j];
+                    if (handled.hasOwnProperty(u)) continue;
+                    if ( this.GG.getOutEdges(u).length == 1 ) {
+                        var relationshipNode = this.GG.getOutEdges(u)[0];
+                        var parents = this.GG.getInEdges(relationshipNode);
+                        if (parents[0] == v || parents[1] == v)
+                        {
+                            buckets[nextBucket].push(u);
+                            handled[u] = true;
+                        }
                     }
                 }
             }
@@ -434,8 +478,10 @@ DrawGraph.prototype = {
         // Now compute all possible permutations of the buckets
         permute2DArrayInFirstDimension( permutations, buckets, 0);
 
+        //printObject(buckets);
+        //printObject(permutations);
         //permutations = [ this.GG.parentlessNodes ];  //DEBUG: no permutations
-        //permutations = [ [3,2,0,1] ];  //DEBUG: no permutations
+        //permutations = [[5,4,0,1,2,9]];
 
         console.log("Found " + permutations.length + " permutations of parentless nodes");
 
@@ -497,7 +543,7 @@ DrawGraph.prototype = {
         return permutations;
     },
 
-    init_order_top_to_bottom: function (parentlessNodes, useStack)
+    init_order_top_to_bottom: function (parentlessNodes, rootlessPartners, useStack)
     {
         // initially orders the nodes in each rank. This may be done by a depth-first or breadth-f
         // search starting with vertices of minimum rank. Vertices are assigned positions in their
@@ -544,6 +590,50 @@ DrawGraph.prototype = {
         var o = new Ordering();
         o.init(order, vOrder);
 
+        //printObject(o);
+
+        // place rootless partners in the best possible way
+        for (var p in rootlessPartners) {
+            if (rootlessPartners.hasOwnProperty(p)) {
+                // now check all rootless partners of p. Will place them next to p
+                // in the ordering, but need to count how many partners p already has on each side
+                // (to place rootless partners on that side to minimize edge crossings)
+                var partnersToTheLeft  = 0;
+                var partnersToTheRight = 0;
+                var pOrder             = o.vOrder[p];
+                var rank               = this.ranks[p];
+
+                var pRelationships = this.GG.getOutEdges(p);
+                for (var j = 0; j < pRelationships.length; j++) {
+                    if ( this.GG.isRelationship(pRelationships[j]) ) {   // ignore long edges
+                        var parents = this.GG.getInEdges(pRelationships[j]);
+                        var partner = (parents[0] == p) ? parents[1] : parents[0];
+                        if ( o.vOrder[partner] > pOrder )
+                            partnersToTheRight++;
+                        else
+                            partnersToTheLeft++;
+                    }
+                }
+
+                var rootless = rootlessPartners[p];
+                //console.log("p: " + p + ", rootless: " + stringifyObject(rootless) + ", rank: " + rank + ", order: " + pOrder);
+                for (var i = 0; i < rootless.length; i++) {
+                    var v = rootless[i];
+
+                    // so we have a v-p partnership. Place v next to p on the side which has less partners already
+                    if (partnersToTheRight < partnersToTheLeft) {
+                        partnersToTheRight++;
+                        o.insert(rank, pOrder+1, v);
+                    }
+                    else {
+                        partnersToTheLeft++;
+                        o.insert(rank, pOrder, v);
+                    }
+                }
+            }
+        }
+
+        //printObject(o);
         return o;
     },
 
@@ -655,6 +745,7 @@ DrawGraph.prototype = {
         var rankFrom = onlyRank ? Math.max(1, onlyRank - 1) : 1;
         var rankTo   = onlyRank ? onlyRank : this.maxRank;
 
+        //printObject(order);
         for (var r = rankFrom; r <= rankTo; r++) {
             var numVert = order.order[r].length;
 
@@ -677,9 +768,16 @@ DrawGraph.prototype = {
                         var parents = this.GG.getInEdges(targetV);
                         var order1 = order.vOrder[parents[0]];
                         var order2 = order.vOrder[parents[1]];
-                        if (i == Math.min(order1, order2))                    // only count it once for the lower-order parent
-                            numCrossings += Math.abs(order2-order1)/2 - 0.5;  // only assign it half a crossing because most will be fixed by transpose()
-                                                                              // - and if "1" is assigned transpose wont fix certain local cases
+                        var fromBetween = Math.min(order1, order2) + 1;
+                        var toBetween   = Math.max(order1, order2) - 1;
+                        var crossings = 0;
+                        for (var o = fromBetween; o <= toBetween; o++) {
+                            var b = order.order[r][o];
+                            if (this.GG.getInEdges(b).length > 0)
+                                crossings++;
+                        }
+                        numCrossings += crossings/2; // only assign it half a crossing because most will be fixed by transpose()
+                                                     // - and if "1" is assigned transpose wont fix certain local cases
                     }
 
                     // so we have an edge v->targetV. Have to check how many edges
@@ -850,6 +948,8 @@ DrawGraph.prototype = {
         //                repeats for each rank, and if there was an improvementg tries again.
         var improved = true;
 
+        //if (doMinorImprovements) printObject(order);
+
         var iter = 0;
         while( improved )
         {
@@ -866,10 +966,21 @@ DrawGraph.prototype = {
                 var maxIndex = order.order[r].length - 1;
                 for (var i = 0; i < maxIndex; i++) {
 
+                    var v1 = order.order[r][i];
+                    var v2 = order.order[r][i+1];
+
                     order.exchange(r, i, i+1);
 
                     var newEdgeCrossings = this.edge_crossing(order, r);
                     var newLengthScore   = doMinorImprovements ? this.edge_length_score(order,r) : 0;
+
+                    //if (doMinorImprovements)
+                    //if ( v1 == 50 || v1 == 3 )  {
+                    //    console.log("v = " + v1 + ", u = " + v2 + ", newScore= " + newEdgeCrossings +
+                    //                ", lenScore= " + newLengthScore + ", oldScore= " + numEdgeCrossings +
+                    //                ", oldLenScore= " + edgeLengthScore);
+                    //}
+
 
                     // TODO: also transpose if more males/females end up on the preferred
                     //var maleFemaleScore  = ...
@@ -880,7 +991,9 @@ DrawGraph.prototype = {
                         improved = true;
                         numEdgeCrossings = newEdgeCrossings;
                         edgeLengthScore  = newLengthScore;
-                        //if (numEdgeCrossings == 0) return 0; // still want to optimize for edge lengths
+                        //if (doMinorImprovements)
+                        //console.log("exchanged "+ v1 + " <-> " + v2);
+                        if (!doMinorImprovements && numEdgeCrossings == 0) return 0; // still want to optimize for edge lengths
                     }
                     else {
                         // exchange back
@@ -889,6 +1002,8 @@ DrawGraph.prototype = {
                 }
             }
         }
+
+        //if (doMinorImprovements) printObject(order);
     },
 
     transposeLongEdges: function(order, numCrossings)
@@ -1063,7 +1178,9 @@ DrawGraph.prototype = {
                     // parent 0 is virtual - use parent1
                     var parent0order = this.order.vOrder[parents[0]];
                     this.order.moveVertexToRankAndOrder(rank, parent0order, 0, this.order.order[0].length-1);
-                    // note: after parent0 removal all orders on the rank have shiften left
+                    // note: after parent0 removal all orders on the rank have shifted left
+                    this.ranks[parents[0]] = 0;
+                    console.log("removing " + parents[0]);
                     this.GG.unplugVirtualVertex(parents[0]);
                     var intervalRight = this.order.vOrder[parents[1]] - 1;
                     var intervalLeft  = parent0order;
@@ -1080,11 +1197,12 @@ DrawGraph.prototype = {
                     // parent 1 is virtual - use parent0
                     var parent1order = this.order.vOrder[parents[1]];
                     this.order.moveVertexToRankAndOrder(rank, parent1order, 0, this.order.order[0].length-1);
-                    // note: after parent1 removal all orders on the rank have shiften left
+                    // note: after parent1 removal all orders on the rank have shifted left
+                    this.ranks[parents[1]] = 0;
+                    console.log("removing " + parents[1]);
                     this.GG.unplugVirtualVertex(parents[1]);
                     var intervalRight = parent1order - 1;
                     var intervalLeft  = this.order.vOrder[parents[0]] + 1;
-                    //console.log("---> start: " + intervalLeft + " end: " + intervalRight);
                     insertOrder = intervalRight;
                     for (var o = intervalLeft; o <= intervalRight; o++) {
                         var v = this.order.order[rank][o];
@@ -1147,6 +1265,7 @@ DrawGraph.prototype = {
         this.removeRelationshipRanks();
 
         console.log("Final re-ordering: " + _printObjectInternal(this.order.order, 0));
+        console.log("Final ranks: "  + stringifyObject(this.ranks));
     },
 
     moveVertexToRankAndOrder: function( v, newRank, newOrder ) {
@@ -1412,13 +1531,13 @@ DrawGraph.prototype = {
         this.try_shift_left (xcoord);
         this.try_shift_right(xcoord, false, true);
         this.try_shift_left (xcoord);
+        xcoord.normalize();
 
         //this.displayGraph(xcoord.xcoord, 'firstAdj');
         printObject(xcoord.xcoord);
 
         var xbest     = xcoord.copy();
         var bestScore = this.xcoord_score(xbest);
-        var prevScore = 0;
 
         for ( var i = 0; i <= this.maxXcoordIterations; i++ )
         {
@@ -1444,10 +1563,8 @@ DrawGraph.prototype = {
                 xbest = xcoord.copy();
                 bestScore = score;
             }
-
-            if (score >= prevScore) break;
-
-            prevScore = score;
+            else
+                break;
         }
 
         // stretch narrow parts of the graph up to the widest part if this
@@ -1518,6 +1635,8 @@ DrawGraph.prototype = {
                             continue;
                         if (this.ranks[u] == considerOnlyRank && this.order.vOrder[u] < fromOrderOnRank)
                             continue;
+                        //if (considerEdgesFromAbove && considerEdgesToBelow && this.ranks[u] == considerOnlyRank && this.GG.isRelationship(v))
+                        //    continue;
                     }
 
                     // have an edge from 'v' to 'u' with weight this.GG.weights[v][u]
