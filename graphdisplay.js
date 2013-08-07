@@ -37,6 +37,7 @@ function drawRelationshipChildhubEdge( canvas, scale, x, scaledY, targetLevel ) 
     var yy2 = computeChildhubHorizontalY( scale, yy1, targetLevel);
     var line = canvas.path("M " + xx1 + " " + yy1 + " L " + xx2 + " " + yy2);
     line.attr({"stroke":"#000"});
+    line.translate(0.5, 0.5);
 }
 
 function drawVerticalChildLine( canvas, scale, childX, scaledY, targetLevel, scaledChildY) {
@@ -47,6 +48,19 @@ function drawVerticalChildLine( canvas, scale, childX, scaledY, targetLevel, sca
     var xx2 = xx1;
     var line = canvas.path("M " + xx1 + " " + yy1 + " L " + xx2 + " " + yy2);
     line.attr({"stroke":"#000"});
+    line.translate(0.5, 0.5);
+    var line2 = canvas.path("M " + (xx1+1) + " " + yy1 + " L " + (xx2+1) + " " + yy2);
+    line2.attr({"stroke":"#FFF"});
+    line2.translate(0.5, 0.5);
+    var line3 = canvas.path("M " + (xx1-1) + " " + yy1 + " L " + (xx2-1) + " " + yy2);
+    line3.attr({"stroke":"#FFF"});
+    line3.translate(0.5, 0.5);
+    var line4 = canvas.path("M " + (xx1+2) + " " + yy1 + " L " + (xx2+2) + " " + yy2);
+    line4.attr({"stroke":"#FFF"});
+    line4.translate(0.5, 0.5);
+    var line5 = canvas.path("M " + (xx1-2) + " " + yy1 + " L " + (xx2-2) + " " + yy2);
+    line5.attr({"stroke":"#FFF"});
+    line5.translate(0.5, 0.5);
 }
 
 function drawHorizontalChildLine( canvas, scale, leftmostX, rightmostX, scaledY, targetLevel) {
@@ -56,12 +70,19 @@ function drawHorizontalChildLine( canvas, scale, leftmostX, rightmostX, scaledY,
     var yy2 = yy1;
     var line = canvas.path("M " + xx1 + " " + yy1 + " L " + xx2 + " " + yy2);
     line.attr({"stroke":"#000"});
+    line.translate(0.5, 0.5);
+    var line2 = canvas.path("M " + xx1 + " " + (yy1-1) + " L " + xx2 + " " + (yy2-1));
+    line2.attr({"stroke":"#FFF"});
+    line2.translate(0.5, 0.5);
+    var line2 = canvas.path("M " + xx1 + " " + (yy1-2) + " L " + xx2 + " " + (yy2-2));
+    line2.attr({"stroke":"#FFF"});
+    line2.translate(0.5, 0.5);
 }
 
 function drawNeighbourRelationshipEdge( canvas, scale, x, scaledY, width, u_x, isBetweenRelatives ) {
     var stroke = "#000";
     if (isBetweenRelatives)
-        stroke = "#F00";
+        stroke = "#A00";
 
     var yy1 = scaledY + (scale.yLevelSize/2)*scale.yscale;
     var yy2 = yy1;
@@ -75,6 +96,35 @@ function drawNeighbourRelationshipEdge( canvas, scale, x, scaledY, width, u_x, i
 
     var line = canvas.path("M " + xx1 + " " + yy1 + " L " + xx2 + " " + yy2);
     line.attr({"stroke":stroke});
+    line.translate(0.5, 0.5);
+}
+
+function drawVerticalRelationshipLine( canvas, scale, x, scaledY, u_x, u_scaledY, isBetweenRelatives ) {
+    var stroke = "#000";
+    if (isBetweenRelatives)
+        stroke = "#A00";
+
+    var xx1 = scale.xshift +   x * scale.xscale;
+    var xx2 = scale.xshift + u_x * scale.xscale;
+
+    var yy1 = scaledY;
+    var yy2 = u_scaledY;
+
+    var line2 = canvas.path("M " + (xx1+1) + " " + yy1 + " L " + (xx2+1) + " " + yy2);
+    line2.attr({"stroke":"#FFF"});
+    line2.translate(0.5, 0.5);
+    var line3 = canvas.path("M " + (xx1-1) + " " + yy1 + " L " + (xx2-1) + " " + yy2);
+    line3.attr({"stroke":"#FFF"});
+    line3.translate(0.5, 0.5);
+    var line4 = canvas.path("M " + (xx1+2) + " " + yy1 + " L " + (xx2+2) + " " + yy2);
+    line4.attr({"stroke":"#FFF"});
+    line4.translate(0.5, 0.5);
+    var line5 = canvas.path("M " + (xx1-2) + " " + yy1 + " L " + (xx2-2) + " " + yy2);
+    line5.attr({"stroke":"#FFF"});
+    line5.translate(0.5, 0.5);
+    var line = canvas.path("M " + xx1 + " " + yy1 + " L " + xx2 + " " + yy2);
+    line.attr({"stroke":stroke});
+    line.translate(0.5, 0.5);
 }
 
 function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) {
@@ -88,8 +138,6 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
     var consangr  = renderPackage.consangr;
     var vertLevel = renderPackage.vertLevel;
 
-    var canvas = Raphael(renderTo, 3000, 1200);
-
     var scale = { xscale: 4.0, yscale: 1.0, xshift: 5, yshift: 5, yLevelSize: 30, yInterLevelGap: 6, yExtraPerHorizontalLevel: 8 };
 
     if (debugMsg) canvas.text(50,10,debugMsg);
@@ -101,6 +149,11 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
         //       we want to separate those ranks vertically more than we separate other ranks
         rankYcoord[r] = rankYcoord[r-1] + (scale.yInterLevelGap + scale.yLevelSize + scale.yExtraPerHorizontalLevel*(vertLevel.rankVerticalLevels[r-1] - 1)) * scale.yscale;
     }
+
+    var maxY = (rankYcoord[ordering.order.length-1] + 200);
+    var maxX = scale.xshift + (Math.max.apply(Math, positions) + Math.max.apply(Math, G.vWidth))*scale.xscale;
+
+    var canvas = Raphael(renderTo, maxX, maxY);
 
     // rank 0 has removed virtual nodes
     for ( var r = 1; r < ordering.order.length; r++ ) {
@@ -117,8 +170,6 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
 
             if ( G.isRelationship(v) ) {
                 var targetChildhub = G.getOutEdges(v)[0];
-                // only one outedge to childhub - and it is guaranteed to be a one-rank long vertical edge
-                drawRelationshipChildhubEdge( canvas, scale, x, y, vertLevel.childEdgeLevel[targetChildhub] );
 
                 // draw child edges from childhub
                 var childEdges = G.getOutEdges(targetChildhub);
@@ -137,6 +188,10 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
                 }
 
                 drawHorizontalChildLine( canvas, scale, leftmostX, rightmostX, y, vertLevel.childEdgeLevel[targetChildhub]);
+
+                // only one outedge to childhub - and it is guaranteed to be a one-rank long vertical edge
+                drawRelationshipChildhubEdge( canvas, scale, x, y, vertLevel.childEdgeLevel[targetChildhub] );
+
                 continue;
             }
 
@@ -148,6 +203,7 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
                     var rankU  = ranks[u];
 
                     var u_x = positions[u];            // note: position has middle coordinates
+                    var u_y = rankYcoord[rankU];
 
                     var consangrRelationship = false;
                     var destination = u;
@@ -170,8 +226,24 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
                     }
                     else {
                         // draw "long" (multi-rank) vetrtical relationship edge
-                        // TODO
+                        // TODO: collec the entire path and draw a curve instead of line segments
                         // note: always have a small horizontal part before connecting to middle of relationship node
+                        var xx = x;
+                        var yy = y + (scale.yLevelSize/2)*scale.yscale;
+                        do {
+                            drawVerticalRelationshipLine( canvas, scale, xx, yy, u_x, u_y, consangrRelationship );
+                            u     = G.getOutEdges(u)[0];
+                            rankU = ranks[u];
+                            xx    = u_x;
+                            yy    = u_y;
+                            u_x   = positions[u];
+                            u_y   = rankYcoord[rankU];
+                            if (!G.isVirtual(G.getOutEdges(u)[0])) { u_y += (scale.yLevelSize/2)*scale.yscale; }
+                        }
+                        while (G.isVirtual(u))
+                        yy -= (scale.yLevelSize/2)*scale.yscale;
+                        //drawVerticalRelationshipLine( canvas, scale, xx, yy, u_x, u_y + (scale.yLevelSize/2)*scale.yscale, consangrRelationship );
+                        drawNeighbourRelationshipEdge( canvas, scale, xx, yy, 0, u_x, consangrRelationship );
                     }
                 }
 
@@ -250,9 +322,10 @@ function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debu
     var positions = renderPackage.positions;
     var consangr  = renderPackage.consangr;
 
-    var canvas = Raphael(renderTo, 3000, 1200);
-
     var xScale = 4.0;
+
+    //var maxX = 50 + (Math.max.apply(Math, positions) + Math.max.apply(Math, G.vWidth))*xScale;
+    var canvas = Raphael(renderTo, 3000, 1200);
 
     var curY = 20;
 
@@ -265,18 +338,22 @@ function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debu
         for ( var i = 0; i < len; i++ ) {
             var v = ordering.order[r][i];
 
-            if (v > G.getMaxRealVertexId()) continue;
-
             var topY   = curY;
             var leftX  = positions[v] - G.getVertexHalfWidth(v);
             var rightX = positions[v] + G.getVertexHalfWidth(v);
+            var midX   = 5 + leftX * xScale + (G.getVertexWidth(v) * xScale)/2;
+
+            if (v > G.getMaxRealVertexId()) {
+                var box = canvas.rect( 5 + leftX * xScale, topY+10, 2 * xScale, 10 );
+                box.attr({fill: "#ccc"});
+                var text = canvas.text( midX, topY + 15, v.toString() );
+                continue;
+            }
 
             if ( v <= G.getMaxRealVertexId() ) {
                 var box = canvas.rect( 5 + leftX * xScale, topY, G.getVertexWidth(v) * xScale, 30 );
                 box.attr({fill: "#ccc"});
             }
-
-            var midX = 5 + leftX * xScale + (G.getVertexWidth(v) * xScale)/2;
 
             if ( v <= G.getMaxRealVertexId() || debugPrint )
             {

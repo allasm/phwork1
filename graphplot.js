@@ -281,10 +281,14 @@ DrawGraph.prototype = {
         var permutationsRoots = this.computePossibleParentlessNodePermutations(maxInitOrderingBuckets, rootlessPartners);
         var permutationsLeafs = this.computePossibleLeafNodePermutations(maxInitOrderingBuckets);
 
+        var initOrderIterTotal = 0;  // just for reporting
+
         var useStack = false;
 
         while ( true ) {
             for (var initOrderIter = 0; initOrderIter < permutationsRoots.length; initOrderIter++ ) {
+                initOrderIterTotal++;
+
                 order = this.init_order_top_to_bottom(permutationsRoots[initOrderIter], rootlessPartners, useStack);
 
                 this.transpose(order, false);  // fix locally-fixable edge crossings,
@@ -303,6 +307,8 @@ DrawGraph.prototype = {
             if ( bestCrossings == 0 ) break;
 
             for (var initOrderIter2 = 0; initOrderIter2 < permutationsLeafs.length; initOrderIter2++ ) {
+                initOrderIterTotal++;
+
                 order = this.init_order_bottom_to_top(permutationsLeafs[initOrderIter2], useStack);
 
                 this.transpose(order, false);  // fix locally-fixable edge crossings
@@ -373,10 +379,10 @@ DrawGraph.prototype = {
 
         // try to optimize long edge placement (as above, bad adjustments are discarded)
         var newBestCrossings = this.transposeLongEdges(best, bestCrossings);
-        if (newBestCrossings < bestCrossings)
-            this.transpose(best);  // fix minor errors introduced in the previous step
 
-        console.log("Ordering stats:  initOrderIter= " + initOrderIter + "/" + initOrderIter2 + ",  reOrderingIter= " + i + ",  noChangeIterations= " + noChangeIterations);
+        this.transpose(best, true);
+
+        console.log("Ordering stats:  initOrderIter= " + initOrderIterTotal + ",  reOrderingIter= " + i + ",  noChangeIterations= " + noChangeIterations);
         console.log("Final ordering: " + _printObjectInternal(best.order, 0));
         console.log("Final ordering:  numCrossings= " + newBestCrossings);
 
@@ -581,6 +587,9 @@ DrawGraph.prototype = {
             // add all children to the queue
             var outEdges = this.GG.getOutEdges(next);
 
+            //alreadyOrderedSortFunc = function(a,b){return b-a};
+            //outEdges.sort(alreadyOrderedSortFunc);
+
             for (var u = 0; u < outEdges.length; u++) {
                 queue.push(outEdges[u]);
             }
@@ -726,6 +735,8 @@ DrawGraph.prototype = {
                     }
                 }
                 totalEdgeLengthInChildren += (maxOrder - minOrder);
+                //if (i == 25)
+                //    console.log("lenInChildren: maxOrd = " + maxOrder + ", minOrd = " + minOrder + "  (children: " + stringifyObject(children) + ", order: " + stringifyObject(order.order[4]) + ")");
             }
         }
 
@@ -733,12 +744,15 @@ DrawGraph.prototype = {
         return totalEdgeLengthInPositions*1000 + totalEdgeLengthInChildren;
     },
 
-    edge_crossing: function(order, onlyRank)
+    edge_crossing: function(order, onlyRank, dontUseApproximationForRelationshipEdges)
     {
-        // Note: in pedigrees edges always go
-        //       - from lower ranks to higher ranks
-        //       - never between nodes on the same rank
-        //         (relationship nodes are re-ranked to the same rank with parents later)
+        // Counts edge crossings in the graph accoring to given node ordering.
+        //
+        // Iff onlyRank is defined, only counts edge crossings affected by re-ordering of
+        // nodes on given rank.
+        //
+        // Assumes that edges always go from lower ranks to higher ranks or
+        // between nodes on the same rank
 
         var numCrossings = 0.0;
 
@@ -762,20 +776,13 @@ DrawGraph.prototype = {
                     // re-ranked one level higher. In most cases the number of edge crossings is the
                     // same, however it may not be. For most cases the following heuristic results
                     // in optimal arrangement:
-                    // for each relatgionship node add the number of crosses equal to the number of
-                    // nodes on the parent rank betweenit's parents
-                    if ( this.GG.isRelationship(targetV) ) {
-                        var parents = this.GG.getInEdges(targetV);
-                        var order1 = order.vOrder[parents[0]];
-                        var order2 = order.vOrder[parents[1]];
-                        var fromBetween = Math.min(order1, order2) + 1;
-                        var toBetween   = Math.max(order1, order2) - 1;
-                        var crossings = 0;
-                        for (var o = fromBetween; o <= toBetween; o++) {
-                            var b = order.order[r][o];
-                            if (this.GG.getInEdges(b).length > 0)
-                                crossings++;
-                        }
+                    // for each relationship node add the number of crossings equal to the number of
+                    // nodes on the parent rank between it's parents according to current ordering
+                    if ( !dontUseApproximationForRelationshipEdges && this.GG.isRelationship(targetV) ) {
+                        var parents  = this.GG.getInEdges(targetV);
+                        var order1    = order.vOrder[parents[0]];
+                        var order2    = order.vOrder[parents[1]];
+                        var crossings = this.numNodesWithParentsInBetween(order, r, order1, order2);
                         numCrossings += crossings/2; // only assign it half a crossing because most will be fixed by transpose()
                                                      // - and if "1" is assigned transpose wont fix certain local cases
                     }
@@ -813,6 +820,11 @@ DrawGraph.prototype = {
         var orderV = order.vOrder[v];
         var orderT = order.vOrder[targetV];
 
+        if (rankV == rankT)
+        {
+            return this.numNodesWithParentsInBetween(order, rankV, orderV, orderT);
+        }
+
         var verticesAtRankV = order.order[ rankV ];    // all vertices at rank V
         var verticesAtRankT = order.order[ rankT ];    // all vertices at rank targetV
 
@@ -835,6 +847,19 @@ DrawGraph.prototype = {
         }
 
         return crossings;
+    },
+
+    numNodesWithParentsInBetween: function (order, rank, order1, order2)
+    {
+        var numNodes = 0;
+        var fromBetween = Math.min(order1, order2) + 1;
+        var toBetween   = Math.max(order1, order2) - 1;
+        for (var o = fromBetween; o <= toBetween; o++) {
+            var b = order.order[rank][o];
+            if (this.GG.getInEdges(b).length > 0)
+                numNodes++;
+        }
+        return numNodes;
     },
 
     //-[wmedian]-------------------------------------------------------------------------
@@ -954,7 +979,7 @@ DrawGraph.prototype = {
         while( improved )
         {
             iter++;
-            if (!doMinorImprovements && iter > 3) break;
+            if (!doMinorImprovements && iter > 4) break;
 
             improved = false;
 
@@ -975,12 +1000,11 @@ DrawGraph.prototype = {
                     var newLengthScore   = doMinorImprovements ? this.edge_length_score(order,r) : 0;
 
                     //if (doMinorImprovements)
-                    //if ( v1 == 50 || v1 == 3 )  {
+                    //if ( v1 == 8 || v1 == 9 )  {
                     //    console.log("v = " + v1 + ", u = " + v2 + ", newScore= " + newEdgeCrossings +
                     //                ", lenScore= " + newLengthScore + ", oldScore= " + numEdgeCrossings +
                     //                ", oldLenScore= " + edgeLengthScore);
                     //}
-
 
                     // TODO: also transpose if more males/females end up on the preferred
                     //var maleFemaleScore  = ...
@@ -1006,7 +1030,7 @@ DrawGraph.prototype = {
         //if (doMinorImprovements) printObject(order);
     },
 
-    transposeLongEdges: function(order, numCrossings)
+    transposeLongEdges: function(order, numCrossings, postReRanking)
     {
         if (numCrossings == 0)
             return numCrossings;
@@ -1020,73 +1044,71 @@ DrawGraph.prototype = {
 
         for (var v = maxRealId+1; v < numVert; v++) {
 
-            if (checked[v]) continue;
+            if (checked[v] || this.ranks[v] == 0) continue;
 
             // find a long edge - an edge connecting real nodes of non-neighbouring ranks,
-            // consisting of virtual vertices on intermediate ranks (plus origianl source/target)
+            // consisting of virtual vertices on intermediate ranks (plus source/target)
 
-            // go towards the head through in-edges
-            var nextIn = v;
-            var chain  = [];
-            while (true) {
-                checked[nextIn] = true;
-                chain.push(nextIn);
-                nextIn = this.GG.inedges[nextIn][0];
-                if (nextIn <= maxRealId) {
-                    // found "head" (real vertex) - add it to the chain iff it has only one inedge and one outedge
-                    if (this.GG.v[nextIn].length != 1 || this.GG.inedges[nextIn].length != 1) {
-                        break;
-                    }
-                }
+            // start from head node - the first virtual node
+            var head = v;
+            while (this.GG.isVirtual(this.GG.getInEdges(head)[0]))
+                head = this.GG.getInEdges(head)[0];
+
+            var chain = [];
+            var next  = head;
+
+            // go towards the tail through out-edges
+            do {
+                checked[next] = true;
+                chain.push(next);
+                next = this.GG.getOutEdges(next)[0];
             }
-            // go towards the tail through out-edges. never include the tail "real" vertex
-            var nextOut = this.GG.v[v][0];
-            while (true) {
-                if (nextOut <= maxRealId) break;
-                checked[nextOut] = true;
-                chain.push(nextOut);
-                nextOut = this.GG.v[nextOut][0];
-            }
-
-            var ranks = this.ranks;
-            var sortfunc = function(a,b) {
-                return (ranks[a] - ranks[b]);
-            };
-
-            // sort head-to-tail by rank
-            chain.sort(sortfunc);
+            while (this.GG.isVirtual(next));
+            chain.push(next);
 
             var bestScore = numCrossings;
             var bestOrder = undefined;
 
             console.log("Optimizing long edge placement: chain " + stringifyObject(chain));
 
-            // try to find best placement: brute force, try to reposition up to 4 pieces at a time simultaneously
+            // try to find best placement: brute force, try to reposition up to 3 pieces at a time simultaneously
             // checking all possible positions for the pieces in question up to 4 positions to the left or right
             if (chain.length <= 10) {
-                for (var i = 0; i < chain.length-1; i++) {
-
-                // TODO: up to 3 or 4 pieces at a time
+                var beforeChainEnd = 2;
+                if (postReRanking)
+                    beforeChainEnd = 4;
+                for (var i = 0; i < chain.length-beforeChainEnd; i++) {
 
                     var piece1 = chain[i];
                     var piece2 = chain[i+1];
+                    var piece3 = chain[i+2];
 
-                    var rank1 = ranks[piece1];
-                    var rank2 = ranks[piece2];
+                    var rank1 = this.ranks[piece1];
+                    var rank2 = this.ranks[piece2];
+                    var rank3 = this.ranks[piece3];
+
                     var ord1  = order.vOrder[piece1];
                     var ord2  = order.vOrder[piece2];
+                    var ord3  = order.vOrder[piece3];
+
+                    //console.log("chain piece " + piece1 + ", " + piece2 + ", " + piece3);
 
                     for (var move1 = -4; move1 <= 4; move1++ ) {
                         for (var move2 = -4; move2 <= 4; move2++ ) {
-                            if (move1 == 0 && move2 == 0) continue;
-                            var newOrder = order.copy();
-                            if (!newOrder.move(rank1, ord1, move1)) continue;
-                            if (!newOrder.move(rank2, ord2, move2)) continue;
+                            for (var move3 = -4; move3 <= 4; move3++ ) {
+                                if (move1 == 0 && move2 == 0 && move3 == 0) continue;
 
-                            var newCross = this.edge_crossing(newOrder);
-                            if (newCross < bestScore) {
-                                bestScore = newCross;
-                                bestOrder = [rank1, ord1, move1, rank2, ord2, move2];
+                                var newOrder = order.copy();
+                                if (!newOrder.move(rank1, ord1, move1)) continue;
+                                if (!newOrder.move(rank2, ord2, move2)) continue;
+                                if (!newOrder.move(rank3, ord3, move3)) continue;
+
+                                var newCross = this.edge_crossing(newOrder, false, postReRanking);
+                                if (newCross < bestScore) {
+                                    console.log("+");
+                                    bestScore = newCross;
+                                    bestOrder = [rank1, ord1, move1, rank2, ord2, move2, rank3, ord3, move3];
+                                }
                             }
                         }
                     }
@@ -1096,6 +1118,7 @@ DrawGraph.prototype = {
             if (bestScore < numCrossings) {
                 if (!order.move(bestOrder[0], bestOrder[1], bestOrder[2])) throw "assert";
                 if (!order.move(bestOrder[3], bestOrder[4], bestOrder[5])) throw "assert";
+                if (!order.move(bestOrder[6], bestOrder[7], bestOrder[8])) throw "assert";
                 numCrossings = bestScore;
             }
 
@@ -1109,8 +1132,8 @@ DrawGraph.prototype = {
     //=====================================================================[re-ordering]=
     reRankRelationships: function() {
         // re-rank all relationship nodes to be on the same level as the lower ranked
-        // parent. Attempt to place next to one of the parents; having ordering info
-        // helps to pick the parent & the location.
+        // parent. Attempt to place the re-ranked node next to one of the parents;
+        // having ordering info helps to pick the parent & the location.
         // Note1: we may not be able to place a relationship node right next to a
         //        parent (because both parents already have a relationship node on the
         //        requested side), but we can always place it next to another
@@ -1165,25 +1188,19 @@ DrawGraph.prototype = {
                 // 1. for each parent pick which side of the parent to use
                 // 2. pick which parent is a better target:
                 //    - prefer real over virtual nodes
-                //      - in case of a virtual node remove that virtual node and shorten the edge
+                //      - in case of a virtual node move it to right next to new location of relationship node
                 //    - prefer parent with no relationship node on the corect side
                 //    - somewhere in the middle if both parents have other nodes on the preferred side:
                 //      - try not to get inbetween well-placed relationships
-                //      - count edge crossings
-                //      - approximately at midpoint otherwise
+                //      - count edge crossings (TODO)
 
                 var insertOrder = undefined;
 
                 if (this.GG.isVirtual(parents[0])) {
                     // parent 0 is virtual - use parent1
                     var parent0order = this.order.vOrder[parents[0]];
-                    this.order.moveVertexToRankAndOrder(rank, parent0order, 0, this.order.order[0].length-1);
-                    // note: after parent0 removal all orders on the rank have shifted left
-                    this.ranks[parents[0]] = 0;
-                    console.log("removing " + parents[0]);
-                    this.GG.unplugVirtualVertex(parents[0]);
-                    var intervalRight = this.order.vOrder[parents[1]] - 1;
-                    var intervalLeft  = parent0order;
+                    var intervalRight = this.order.vOrder[parents[1]];
+                    var intervalLeft  = parent0order+1;
                     insertOrder = intervalRight;
                     for (var o = intervalRight; o >= intervalLeft; o--) {
                         var v = this.order.order[rank][o];
@@ -1192,16 +1209,12 @@ DrawGraph.prototype = {
                             break;
                         }
                     }
+                    this.order.moveVertexToOrder(rank, parent0order, insertOrder);
                 }
                 else if (this.GG.isVirtual(parents[1])) {
                     // parent 1 is virtual - use parent0
                     var parent1order = this.order.vOrder[parents[1]];
-                    this.order.moveVertexToRankAndOrder(rank, parent1order, 0, this.order.order[0].length-1);
-                    // note: after parent1 removal all orders on the rank have shifted left
-                    this.ranks[parents[1]] = 0;
-                    console.log("removing " + parents[1]);
-                    this.GG.unplugVirtualVertex(parents[1]);
-                    var intervalRight = parent1order - 1;
+                    var intervalRight = parent1order;
                     var intervalLeft  = this.order.vOrder[parents[0]] + 1;
                     insertOrder = intervalRight;
                     for (var o = intervalLeft; o <= intervalRight; o++) {
@@ -1212,6 +1225,7 @@ DrawGraph.prototype = {
                             break;
                         }
                     }
+                    this.order.moveVertexToOrder(rank, parent1order, insertOrder);
                 }
                 else {
                     // both parents are real
@@ -1264,6 +1278,18 @@ DrawGraph.prototype = {
 
         this.removeRelationshipRanks();
 
+        // after re-ranking there may be some orderings which are equivalent in terms
+        // of the number of edge crossings, but more or less visually pleasing
+        // depending on what kinds of edges are crossing.
+        // Until re-ordering is done it is computationally harder to make these tests,
+        // but once reordering is complete it is easy
+        // (e.g: testcase 3A, relationship with both a parent and paren'ts child)
+        this.improveOrdering();
+
+        // after re-ordering long edges are shorter, try to improve long edge placement again
+        var edgeCrossings = this.edge_crossing(this.order, false, true);
+        this.transposeLongEdges( this.order, edgeCrossings, true );
+
         console.log("Final re-ordering: " + _printObjectInternal(this.order.order, 0));
         console.log("Final ranks: "  + stringifyObject(this.ranks));
     },
@@ -1306,6 +1332,13 @@ DrawGraph.prototype = {
             this.maxRank--;
         }
     },
+
+    improveOrdering: function()
+    {
+        //...
+    },
+
+
     //=====================================================================[re-ordering]=
 
     //=[ancestors]=======================================================================

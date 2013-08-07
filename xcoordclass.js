@@ -114,9 +114,8 @@ XCoord.prototype = {
                 minExtra = (this.xcoord[i] - this.halfWidth[i]);
         }
 
-        for (var i = 0; i < this.xcoord.length; i++) {
+        for (var i = 0; i < this.xcoord.length; i++)
             this.xcoord[i] -= minExtra;
-        }
     },
 
     copy: function () {
@@ -177,8 +176,8 @@ XCoordScore.prototype = {
                 //    printObject(this);
                 //    printObject(otherScore);
                 //}
-                var score1 = this.inEdgeMaxLen.reduce(function(a,b){return a+b;});
-                var score2 = otherScore.inEdgeMaxLen.reduce(function(a,b){return a+b;});
+                var score1 = this.inEdgeMaxLen.length       == 0 ? 0 : this.inEdgeMaxLen.reduce(function(a,b){return a+b;});
+                var score2 = otherScore.inEdgeMaxLen.length == 0 ? 0 : otherScore.inEdgeMaxLen.reduce(function(a,b){return a+b;});
 
                 if (score1 == score2)
                     return (Math.max.apply(null,this.inEdgeMaxLen) < Math.max.apply(null,otherScore.inEdgeMaxLen)); // given everything else equal, prefer layout with shorter longest edge
