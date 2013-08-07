@@ -254,6 +254,8 @@ InternalGraph.prototype = {
             var inEdges  = this.getInEdges(v);
 
             if (this.isPerson(v)) {
+                if (inEdges.length > 1)
+                    throw "Assertion failed: person nodes can't have two in-edges as people are produced by a single pregnancy (failed for " + this.getVertexNameById(v) + ")";
                 for (var i = 0; i < outEdges.length; i++)
                     if (!this.isRelationship(outEdges[i]) && !this.isVirtual(outEdges[i]) )
                         throw "Assertion failed: person nodes have only out edges to relationships (failed for " + this.getVertexNameById(v) + ")";
@@ -573,6 +575,7 @@ Ordering.prototype = {
     },
 
     move: function(rank, index, amount) {
+        // changes vertex order within the same rank. Moves "amount" positions to the right or to the left
         if (amount == 0) return true;
 
         newIndex = index + amount;
@@ -615,6 +618,7 @@ Ordering.prototype = {
     },
 
     moveVertexToRankAndOrder: function ( oldRank, oldOrder, newRank, newOrder ) {
+        // changes vertex rank and order. Insertion happens right before the node currently occupying the newOrder position on rank newRank
         var v = this.order[oldRank][oldOrder];
 
         this.order[oldRank].splice(oldOrder, 1);
@@ -630,6 +634,13 @@ Ordering.prototype = {
             var nextV = this.order[oldRank][i];
             this.vOrder[nextV]--;
         }
+	},
+
+    moveVertexToOrder: function ( rank, oldOrder, newOrder ) {
+        // changes vertex order within the same rank. Insertion happens right before the node currently occupying the newOrder position
+        // (i.e. changing order form 3 to 4 does nothing, as before position 4 is still position 3)
+        var shiftAmount = newOrder - oldOrder;
+        this.move( rank, oldOrder, shiftAmount );
 	},
 
     changeVertexOrder: function ( rank, oldOrder, newOrder ) {
