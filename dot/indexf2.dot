@@ -1,0 +1,17 @@
+digraph graphname {
+     root -> f1 -> p1 -> chhub1 -> ch1 -> p3 -> chhub3 -> ch6;
+     root -> m1 -> p1;
+     chhub1 -> ch2 -> p4 -> chhub4;
+     chhub1 -> ch3 -> p5 -> chhub5 -> ch7;
+     root -> m3 -> p5;
+     root -> f2 -> p2 -> chhub2 -> ch4 -> p3;
+     root -> m2 -> p2;
+     chhub2 -> ch5 -> p4;
+
+     {rank=same; f1 p1 m1}
+     {rank=same; f2 p2 m2}
+     {rank=same; ch3 p5}
+     {rank=same; ch2 ch5 p4}
+     {rank=same; ch1 ch4 p3}
+}
+
