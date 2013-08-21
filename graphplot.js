@@ -1,18 +1,26 @@
-
-
-DrawGraph = function(internalG)
+DrawGraph = function( internalG,
+                      horizontalPersonSeparationDist, // mandatory argument
+                      horizontalRelSeparationDist,    // mandatory argument
+                      maxInitOrderingBuckets,         // optional
+                      maxOrderingIterations,          // optional
+                      maxXcoordIterations )           // optional
 {
-    this.G  = internalG;         // real graph
-    this.GG = undefined;         // graph with multi-rank edges replaced by virtual vertices/edges
+    this.G  = internalG;         // real graph (InternalGraph class)
+    this.GG = undefined;         // same graph with multi-rank edges replaced by virtual vertices/edges
 
     this.ranks     = undefined;  // array: index = vertex id, value = rank
     this.maxRank   = undefined;  // int:   max rank in the above array (maintained for performance reasons)
+
     this.order     = undefined;  // class: Ordering
+
     this.vertLevel = undefined;
     this.positions = undefined;
 
     this.ancestors = undefined;  // for each node lists all its ancestors and the closest relationship distance
     this.consangr  = undefined;  // set of consanguineous relationship IDs
+
+    this.initialize( horizontalPersonSeparationDist, horizontalRelSeparationDist,
+                     maxInitOrderingBuckets, maxOrderingIterations, maxXcoordIterations );
 };
 
 DrawGraph.prototype = {
@@ -20,25 +28,27 @@ DrawGraph.prototype = {
     maxInitOrderingBuckets: 5,           // it may take up to ~factorial_of_this_number iterations to generate initial ordering
     maxOrderingIterations:  24,          // up to so many iterations are spent optimizing initial ordering
     maxXcoordIterations:    8,
-    xCoordEdgeWeightValue:  true,        // when optimizing edge length/cuvature take
-                                         // edge weigth into account or not
+    xCoordEdgeWeightValue:  true,        // when optimizing edge length/curvature take
+                                         // edge weight into account or not
+    horizontalPersonSeparationDist: 1,
+    horizontalRelSeparationDist:    1,
 
-    draw: function( horizontalPersonSeparationDist, // mandatory argument
-                    horizontalRelSeparationDist,    // mandatory argument
-                    virtualNodeWidth,               // mandatory argument
-                    maxInitOrderingBuckets,         // optional
-                    maxOrderingIterations,          // optional
-                    maxXcoordIterations )           // optional
+    initialize: function( horizontalPersonSeparationDist,
+                          horizontalRelSeparationDist,
+                          maxInitOrderingBuckets,
+                          maxOrderingIterations,
+                          maxXcoordIterations )
     {
-        if (maxInitOrderingBuckets) this.maxInitOrderingBuckets = maxInitOrderingBuckets;
-        if (maxOrderingIterations)  this.maxOrderingIterations  = maxOrderingIterations;
-        if (maxXcoordIterations)    this.maxXcoordIterations    = maxXcoordIterations;
+        if (horizontalPersonSeparationDist) this.horizontalPersonSeparationDist = horizontalPersonSeparationDist;
+        if (horizontalRelSeparationDist)    this.horizontalRelSeparationDist    = horizontalRelSeparationDist;
+        if (maxInitOrderingBuckets)         this.maxInitOrderingBuckets         = maxInitOrderingBuckets;
+        if (maxOrderingIterations)          this.maxOrderingIterations          = maxOrderingIterations;
+        if (maxXcoordIterations)            this.maxXcoordIterations            = maxXcoordIterations;
 
         if (this.maxInitOrderingBuckets > 8)
             throw "Too many ordering buckets: number of permutations (" + this.maxInitOrderingBuckets.toString() + "!) is too big";
 
         var timer = new Timer();
-        timer.start();
 
         // 1)
         var rankResult = this.rank();
@@ -52,7 +62,7 @@ DrawGraph.prototype = {
         // ordering algorithms needs all edges to connect nodes on neighbouring ranks only;
         // to accomodate that multi-rank edges are split into a chain of edges between new
         // "virtual" nodes on intermediate ranks
-        this.GG = this.G.makeGWithSplitMultiRankEdges(this.ranks, this.maxRank, virtualNodeWidth);
+        this.GG = this.G.makeGWithSplitMultiRankEdges(this.ranks, this.maxRank);
 
         printObject( this.GG );
 
@@ -78,7 +88,7 @@ DrawGraph.prototype = {
         timer.printSinceLast("=== Ancestors + re-ranking runtime: ");
 
         // 3)
-        this.positions = this.position(horizontalPersonSeparationDist, horizontalRelSeparationDist);
+        this.positions = this.position(this.horizontalPersonSeparationDist, this.horizontalRelSeparationDist);
 
         timer.printSinceLast("=== Positioning runtime: ");
 
@@ -87,13 +97,6 @@ DrawGraph.prototype = {
         this.vertLevel = this.positionVertically();
 
         timer.printSinceLast("=== Vertical spacing runtime: ");
-
-        return { convertedG: this.GG,
-                 ranks:      this.ranks,
-                 ordering:   this.order,
-                 vertLevel:  this.vertLevel,
-                 positions:  this.positions,
-                 consangr:   this.consangr };
     },
 
     //=[rank]============================================================================
@@ -736,7 +739,7 @@ DrawGraph.prototype = {
                 }
                 totalEdgeLengthInChildren += (maxOrder - minOrder);
                 //if (i == 25)
-                //    console.log("lenInChildren: maxOrd = " + maxOrder + ", minOrd = " + minOrder + "  (children: " + stringifyObject(children) + ", order: " + stringifyObject(order.order[4]) + ")");
+                //console.log("lenInChildren: maxOrd = " + maxOrder + ", minOrd = " + minOrder + "  (children: " + stringifyObject(children) + ", order: " + stringifyObject(order.order[4]) + ")");
             }
         }
 
@@ -826,7 +829,6 @@ DrawGraph.prototype = {
         }
 
         var verticesAtRankV = order.order[ rankV ];    // all vertices at rank V
-        var verticesAtRankT = order.order[ rankT ];    // all vertices at rank targetV
 
         // edges from rankV to rankT: only those after v (orderV+1)
         for (var ord = orderV+1; ord < verticesAtRankV.length; ord++) {
@@ -851,6 +853,11 @@ DrawGraph.prototype = {
 
     numNodesWithParentsInBetween: function (order, rank, order1, order2)
     {
+        // TODO!
+        // TODO: treat special case of same-rank edges (relationship edges):
+        //   - first, some may not cross because both source and target are between order1 & order2
+        //   - second, it mya be an out edge not in edge, but still crosses as sourc eis inside, but target is outside [order1, order2]
+
         var numNodes = 0;
         var fromBetween = Math.min(order1, order2) + 1;
         var toBetween   = Math.max(order1, order2) - 1;
@@ -1498,14 +1505,15 @@ DrawGraph.prototype = {
                     verticalLevels.rankVerticalLevels[r] = useLevel;
 
                 if (doShift) {
-                    var maxShiftRank = 0;
+                    var maxShiftRank = Infinity;
                     for (var adjNode in shiftBelowNodes[v])
                         if (shiftBelowNodes[v].hasOwnProperty(adjNode))
-                            maxShiftRank = Math.max(verticalLevels.childEdgeLevel[adjNode], maxShiftRank);
+                            maxShiftRank = Math.min(verticalLevels.childEdgeLevel[adjNode], maxShiftRank);
 
                     // shift all affected nodes AND all nodes that they affect etc
                     var shiftAmount = (useLevel+1) - maxShiftRank;
 
+                    //console.log("------- Processing: " + v);
                     //printObject(shiftBelowNodes);
                     //console.log("Shift amount: " + shiftAmount);
 
@@ -1518,15 +1526,19 @@ DrawGraph.prototype = {
                         var nextToShift = shiftNodes.pop();
 
                         if (doneProcessing.hasOwnProperty(nextToShift)) continue;  // to avoid infinite mutual dependency loop
-
                         doneProcessing[nextToShift] = true;
 
                         for (var adjNode in shiftBelowNodes[nextToShift]) {
                             if (shiftBelowNodes[nextToShift].hasOwnProperty(adjNode)) {
                                 verticalLevels.childEdgeLevel[adjNode] += shiftAmount;
-                                shiftNodes.push(shiftBelowNodes[nextToShift][adjNode]);
+
+                                if ( verticalLevels.childEdgeLevel[adjNode] > verticalLevels.rankVerticalLevels[r] )
+                                    verticalLevels.rankVerticalLevels[r] = verticalLevels.childEdgeLevel[adjNode];
+
+                                shiftNodes.push(adjNode);
                             }
                         }
+                        //console.log(stringifyObject(verticalLevels.childEdgeLevel));
                     }
                 }
             }
@@ -1580,14 +1592,6 @@ DrawGraph.prototype = {
 
             //this.displayGraph(xcoord.xcoord, 'Adj' + i);
 
-            // [TODO] not clear how and hard to implement sugested heuristics.
-            //        The paper suggests to do a network simplex anyway instead, but it is
-            //        even harder to debug - definitely have to do later, but not now
-            //medianpos(i, xcoord);
-            //minedge(i,xcoord);
-            //minnode(i,xcoord);
-            //minpath(i,xcoord);
-            //packcut(i,xcoord);
             xcoord.normalize();
 
             var score = this.xcoord_score(xcoord);
@@ -1599,10 +1603,6 @@ DrawGraph.prototype = {
             else
                 break;
         }
-
-        // stretch narrow parts of the graph up to the widest part if this
-        // improves presentation and makes edges more straight and less crowded
-        //this.widen_graph(xbest);
 
         this.displayGraph(xbest.xcoord, 'final');
         printObject(xbest.xcoord);
@@ -1794,7 +1794,7 @@ DrawGraph.prototype = {
                 // speed optimization: shift which we can do without disturbing other vertices and
                 //                     thus requiring no backup/restore process
                 var noDisturbMax = xcoord.getRightMostNoDisturbPosition(v);
-                var maxSafeShift = (noDisturbMax >= 0) ? noDisturbMax - xcoord.xcoord[v] : maxShift;
+                var maxSafeShift = (noDisturbMax < median) ? noDisturbMax - xcoord.xcoord[v] : maxShift;
 
                 //if (v==9 || v == 10)
                 //    console.log("shiftright-rank-" + r + "-v-" + v + "  -->  DesiredShift: " + maxShift + ", maxSafe: " + maxSafeShift);
@@ -2091,12 +2091,8 @@ DrawGraph.prototype = {
 
 function draw_graph( internalG )
 {
-    var grapher = new DrawGraph(internalG);
-
     var horizontalPersonSeparationDist = 8;  // same relative units as in intenalG.width fields. Distance between persons
     var horizontalRelSeparationDist    = 6;  // same relative units as in intenalG.width fields. Distance between persons
-    var virtualNodeWidth               = 2;  // same relative units as in intenalG.width fields
-                                             // (better results are obtained when it is even)
 
     var orderingInitBuckets = 5;             // default: 5. It may take up to ~factorial_of_this_number iterations. See ordering()
 
@@ -2104,19 +2100,17 @@ function draw_graph( internalG )
 
     var xcoordIterations    = 4;             // default: 8
 
-    var begin = new Date().getTime();
+    var timer = new Timer();
 
-    result = grapher.draw( horizontalPersonSeparationDist,
-                           horizontalRelSeparationDist,
-                           virtualNodeWidth,
-                           orderingInitBuckets,
-                           orderingIterations,
-                           xcoordIterations );
+    var drawGraph = new DrawGraph( internalG,
+                                   horizontalPersonSeparationDist,
+                                   horizontalRelSeparationDist,
+                                   orderingInitBuckets,
+                                   orderingIterations,
+                                   xcoordIterations );
 
-    var runTime = new Date().getTime() - begin;
+    console.log( "=== Running time: " + timer.report() + "ms ==========" );
 
-    console.log( "=== Running time: " + runTime + "ms ==========" );
-
-    return result;
+    return new PositionedGraph(drawGraph);
 }
 
