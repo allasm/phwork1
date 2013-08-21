@@ -8,6 +8,54 @@ function display_raw_graph(G, renderTo) {
 }
 
 
+function addChild (form, positionedGraph, redrawRenderTo) {
+    var inputs = form.getElementsByTagName('input');
+    for (var index = 0; index < inputs.length; ++index) {
+        console.log("Adding child to: " + inputs[index].value);
+        positionedGraph.addChild(parseInt(inputs[index].value));
+    }
+
+    display_processed_graph(positionedGraph, redrawRenderTo);
+
+    return false;
+}
+
+function addParents (form, positionedGraph, redrawRenderTo) {
+    var inputs = form.getElementsByTagName('input');
+    for (var index = 0; index < inputs.length; ++index) {
+        console.log("Adding parents to: " + inputs[index].value);
+        positionedGraph.addParents(parseInt(inputs[index].value));
+    }
+
+    display_processed_graph(positionedGraph, redrawRenderTo);
+
+    return false;
+}
+
+function repositionAll (positionedGraph, redrawRenderTo) {
+    return false;
+}
+
+function checkNodeId (element) {
+    //console.log("zzz2");
+}
+
+function display_controls(positionedGraph, controlRenderTo, redrawRenderTo) {
+    var str = "'" + redrawRenderTo + "'";
+    document.getElementById(controlRenderTo).innerHTML = "\
+        <form method=\"post\" action=\"\" onsubmit=\"return addChild(this, " + positionedGraph + ", " + str  + ")\">\
+            <input type=\"text\" name=\"nodeid\" id=\"nodeid\" onkeyup=\"checkNodeId(this)\"/>\
+            <button style=\"width: 100px\" type=\"submit\" id=\"submit\">Add Child</button>\
+        </form>\
+        <form method=\"post\" action=\"\" onsubmit=\"return addParents(this, " + positionedGraph + ", " + str  + ")\">\
+            <input type=\"text\" name=\"nodeid\" id=\"nodeid\" onkeyup=\"checkNodeId(this)\"/>\
+            <button style=\"width: 100px\" type=\"submit\" id=\"submit\">Add Parents</button>\
+        </form>\
+        <form method=\"post\" action=\"\" onsubmit=\"return repositionAll(" + positionedGraph + ", " + str  + ")\">\
+            <button type=\"submit\" id=\"submit\">Reposition all</button>\
+        </form>";
+}
+
 function drawPersonBox ( canvas, scale, x, scaledY, width, label, sex ) {
     // x: middle of node
     // y: top of node
@@ -74,9 +122,9 @@ function drawHorizontalChildLine( canvas, scale, leftmostX, rightmostX, scaledY,
     var line2 = canvas.path("M " + xx1 + " " + (yy1-1) + " L " + xx2 + " " + (yy2-1));
     line2.attr({"stroke":"#FFF"});
     line2.translate(0.5, 0.5);
-    var line2 = canvas.path("M " + xx1 + " " + (yy1-2) + " L " + xx2 + " " + (yy2-2));
-    line2.attr({"stroke":"#FFF"});
-    line2.translate(0.5, 0.5);
+    var line3 = canvas.path("M " + xx1 + " " + (yy1-2) + " L " + xx2 + " " + (yy2-2));
+    line3.attr({"stroke":"#FFF"});
+    line3.translate(0.5, 0.5);
 }
 
 function drawNeighbourRelationshipEdge( canvas, scale, x, scaledY, width, u_x, isBetweenRelatives ) {
@@ -127,16 +175,16 @@ function drawVerticalRelationshipLine( canvas, scale, x, scaledY, u_x, u_scaledY
     line.translate(0.5, 0.5);
 }
 
-function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) {
+function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg) {
 
     //if (!debugPrint) printObject(renderPackage);
 
-    var G         = renderPackage.convertedG;
-    var ranks     = renderPackage.ranks;
-    var ordering  = renderPackage.ordering;
-    var positions = renderPackage.positions;
-    var consangr  = renderPackage.consangr;
-    var vertLevel = renderPackage.vertLevel;
+    var G         = positionedGraph.DG.GG;
+    var ranks     = positionedGraph.DG.ranks;
+    var ordering  = positionedGraph.DG.order;
+    var positions = positionedGraph.DG.positions;
+    var consangr  = positionedGraph.DG.consangr;
+    var vertLevel = positionedGraph.DG.vertLevel;
 
     var scale = { xscale: 4.0, yscale: 1.0, xshift: 5, yshift: 5, yLevelSize: 30, yInterLevelGap: 6, yExtraPerHorizontalLevel: 8 };
 
@@ -147,7 +195,7 @@ function display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) 
     for ( var r = 2; r < ordering.order.length; r++ ) {
         // note: scale.yExtraPerHorizontalLevel*(vertLevel.rankVerticalLevels[r] - 1) part comes from the idea that if there are many horizontal lines between two ranks
         //       we want to separate those ranks vertically more than we separate other ranks
-        rankYcoord[r] = rankYcoord[r-1] + (scale.yInterLevelGap + scale.yLevelSize + scale.yExtraPerHorizontalLevel*(vertLevel.rankVerticalLevels[r-1] - 1)) * scale.yscale;
+        rankYcoord[r] = rankYcoord[r-1] + (scale.yInterLevelGap + scale.yLevelSize + scale.yExtraPerHorizontalLevel*(Math.max(vertLevel.rankVerticalLevels[r-1],2) - 2)) * scale.yscale;
     }
 
     var maxY = (rankYcoord[ordering.order.length-1] + 200);
@@ -324,8 +372,8 @@ function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debu
 
     var xScale = 4.0;
 
-    //var maxX = 50 + (Math.max.apply(Math, positions) + Math.max.apply(Math, G.vWidth))*xScale;
-    var canvas = Raphael(renderTo, 3000, 1200);
+    var maxX = 50 + (Math.max.apply(Math, positions) + Math.max.apply(Math, G.vWidth))*xScale;
+    var canvas = Raphael(renderTo, maxX, 1200);
 
     var curY = 20;
 
