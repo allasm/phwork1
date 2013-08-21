@@ -11,8 +11,11 @@
     <script type="text/javascript" src="../graphclasses.js"></script>
     <script type="text/javascript" src="../xcoordclass.js"></script>
     <script type="text/javascript" src="../graphplot.js"></script>
+    <script type="text/javascript" src="../positionedgraph.js"></script>    
 
     <script type="text/javascript">
+        var processedGraph;
+        
         function showGraph()
         {
             // TESTCASE1: 2(+1) generations, 3 families where both families A and C are linked to B at generation 2 level.
@@ -48,11 +51,13 @@
 
             G.init_from_user_graph(inputG, 10, 2);
 
-            display_raw_graph(G, 'input');
+            display_raw_graph(G, 'input');           
 
-            var layoutG = draw_graph(G);
+            processedGraph = draw_graph(G);
+            
+            display_controls('processedGraph', 'control', 'output');
 
-            display_processed_graph(layoutG, 'output');
+            display_processed_graph(processedGraph, 'output');
         }
     </script>
 
@@ -60,7 +65,9 @@
 <body onload="showGraph()">
     Input Graph:
     <div id="input"></div>
-    <br>
+    Controls:
+    <div id="control"></div>
+    <br>    
     Output:
     <div id="output"></div>
 </body>
