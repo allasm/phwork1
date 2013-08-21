@@ -48,7 +48,7 @@ XCoord.prototype = {
     },
 
     getRightMostNoDisturbPosition: function(v) {
-        var rightBoundary = -1;
+        var rightBoundary = Infinity;
 
         var order = this.order.vOrder[v];
         if ( order < this.order.order[this.ranks[v]].length-1 ) {
