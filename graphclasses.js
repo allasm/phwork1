@@ -6,7 +6,8 @@ var TYPE = {
   VIRTUALEDGE:  4
 };
 
-InternalGraph = function() {
+InternalGraph = function(defaultPersonNodeWidth, defaultNonPersonNodeWidth)
+{
     this.v        = [];        // for each V lists (as unordered arrays of ids) vertices connected from V
     this.inedges  = [];        // for each V lists (as unordered arrays of ids) vertices connecting to V
 
@@ -21,118 +22,181 @@ InternalGraph = function() {
     this.leafNodes       = [];
 
     this.vWidth = [];
-    this.defaultNonPersonNodeWidth = 1;
-    this.defaultPersonNodeWidth    = 1;
+    this.defaultNonPersonNodeWidth = defaultPersonNodeWidth    ? defaultPersonNodeWidth    : 1;
+    this.defaultPersonNodeWidth    = defaultNonPersonNodeWidth ? defaultNonPersonNodeWidth : 1;
 
     this.type       = [];      // for each V node type (see TYPE)
     this.properties = [];      // for each V a set of type-specific properties {"sex": "m"/"f"/"u", etc.}
 };
 
+
+InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, defaultNonPersonNodeWidth, checkIDs)
+{
+    // note: serialize() produces the correct input for this function
+
+    var newG = new InternalGraph();
+
+    if (defaultPersonNodeWidth)    newG.defaultNonPersonNodeWidth = defaultNonPersonNodeWidth;
+    if (defaultNonPersonNodeWidth) newG.defaultPersonNodeWidth    = defaultPersonNodeWidth;
+
+    var relationshipHasExplicitChHub = {};
+
+    // first pass: add all vertices and assign vertex IDs
+    for (var v = 0; v < inputG.length; v++) {
+
+        var type = TYPE.PERSON;
+        if ( inputG[v].hasOwnProperty('relationship') || inputG[v].hasOwnProperty('rel') ) {
+            type = TYPE.RELATIONSHIP;
+            // normally users wont specify childhubs explicitly - but save via JSON does
+            if (inputG[v].hasOwnProperty('hub') || inputG[v].hasOwnProperty('haschhub'))
+                relationshipHasExplicitChHub[v] = true;
+        }
+        else if ( inputG[v].hasOwnProperty('chhub') ) {
+            type = TYPE.CHILDHUB;
+        }
+        else if ( inputG[v].hasOwnProperty('virtual') || inputG[v].hasOwnProperty('virt')) {
+            type = TYPE.VIRTUALEDGE;
+        }
+
+        var properties = {};
+        if (inputG[v].hasOwnProperty('properties') || inputG[v].hasOwnProperty('prop'))
+            properties = inputG[v].hasOwnProperty('properties') ? inputG[v]["properties"] : inputG[v]["prop"];
+
+        if ( type == TYPE.PERSON ) {
+            if (!properties.hasOwnProperty("sex"))
+                properties["sex"] = "u";
+
+            if (inputG[v].hasOwnProperty("sex")) {
+                 var sexString = inputG[v]["sex"].toLowerCase();
+                 if( sexString == "female" || sexString == "fem" || sexString == "f")
+                    properties["sex"] = "f";
+                else if( sexString == "male" || sexString == "m")
+                    properties["sex"] = "m";
+            }
+        }
+
+        var width = inputG[v].hasOwnProperty('width') ?
+                    inputG[v].width :
+                    (type == TYPE.PERSON ? defaultPersonNodeWidth : defaultNonPersonNodeWidth);
+
+        var newID = newG._addVertex( inputG[v].name, null, type, properties, width );   // "null" since id is not known yet
+
+        // should only be used for save/restore: to verify the new IDs match the old ones
+        if (checkIDs) {
+            if (!inputG[v].hasOwnProperty('id'))
+                throw "Can't chekc IDs - no IDs in input data!";
+            var expectID = inputG[v]['id'];
+            if (expectID != newID)
+                throw "Assertion failed: restored node ID (" + newID.toString() + ") does not match real node ID (" + expectID.toString() + ")!";
+        }
+
+        // when entered by user manually allow users to skip childhub nodes (and create them automatically)
+        // (but when saving/restoring from a JSON need to save/restore childhub nodes as they
+        //  may have some properties assigned by the user which we need to save/restore)
+        if ( type == TYPE.RELATIONSHIP && !relationshipHasExplicitChHub.hasOwnProperty(v) )
+            newG._addVertex( "chhub_" + inputG[v].name, null, TYPE.CHILDHUB, null, width );
+    }
+
+    // second pass (once all vertex IDs are known): process edges
+    for (var v = 0; v < inputG.length; v++) {
+        var nextV = inputG[v];
+
+        var vID    = newG.getVertexIdByName( nextV.name );
+        var origID = vID;
+
+        var substitutedID = false;
+
+        if (newG.type[vID] == TYPE.RELATIONSHIP && !relationshipHasExplicitChHub.hasOwnProperty(vID)) {
+            // replace edges from rel node by edges from childhub node
+            var childhubID = newG.getVertexIdByName( "chhub_" + nextV.name );
+            vID = childhubID;
+            substitutedID = true;
+        }
+
+        var maxChildEdgeWeight = 0;
+
+        if (nextV.outedges) {
+            for (var outE = 0; outE < nextV.outedges.length; outE++) {
+                var targetName = nextV.outedges[outE].to;
+                var weight     = 1;
+                if (nextV.outedges[outE].hasOwnProperty('weight'))
+                    weight = nextV.outedges[outE].weight;
+
+                if ( weight > maxChildEdgeWeight )
+                    maxChildEdgeWeight = weight;
+
+                var targetID = newG.getVertexIdByName( targetName );
+
+                newG._addEdge( vID, targetID, weight );
+            }
+        }
+
+        if (substitutedID) {
+            newG._addEdge( origID, vID, maxChildEdgeWeight );
+        }
+    }
+
+    // find all vertices without an in-edge and vertices without out-edges
+    newG._updateLeafAndParentlessNodes();
+
+    newG.validate();
+
+    return newG;
+}
+
+
 InternalGraph.prototype = {
 
-    //-[construction from user input]-----------------------
-    init_from_user_graph: function(inputG, defaultPersonNodeWidth, defaultNonPersonNodeWidth) {
+    serialize: function(saveWidth) {
+        var output = [];
 
-        for (var v = 0; v < inputG.length; v++) {
-            var properties = {};
+        for (var v = 0; v < this.v.length; v++) {
+            var data = {};
+            data["name"] = this.idToName[v];
+            data["id"]   = v;
 
-            var type = TYPE.PERSON;
-            if ( inputG[v].hasOwnProperty('relationship') || inputG[v].hasOwnProperty('rel') )
-                type = TYPE.RELATIONSHIP;
+            if (saveWidth) // may not want this for compactness of output when all width are equal to default
+                data["width"] = this.vWidth[v];
 
-            if ( type == TYPE.PERSON ) {
-                properties["sex"] = "u";
-                if (inputG[v].hasOwnProperty("sex")) {
-                     if( inputG[v]["sex"] == "female" || inputG[v]["sex"] == "fem" || inputG[v]["sex"] == "f")
-                        properties["sex"] = "f";
-                    else if( inputG[v]["sex"] == "male" || inputG[v]["sex"] == "m")
-                        properties["sex"] = "m";
-                }
+            if (this.type[v] == TYPE.PERSON) {
+                //
             }
+            else if (this.type[v] == TYPE.RELATIONSHIP) {
+                data["rel"] = true;
+                data["hub"] = true;
+            }
+            else if (this.type[v] == TYPE.CHILDHUB) {
+                data["chhub"] = true;
+            }
+            else
+                data["virt"] = true;
 
-            var width = inputG[v].hasOwnProperty('width') ?
-                        inputG[v].width :
-                        (type == TYPE.PERSON ? defaultPersonNodeWidth : defaultNonPersonNodeWidth);
+            data["prop"] = this.properties[v];
 
-            this._addVertex( inputG[v].name, null, type, properties, width );   // "null" since id is not known yet
+            out = [];
+            var outEdges = this.getOutEdges(v);
+            for (var i = 0; i < outEdges.length; i++)
+                out.push({"to": this.idToName[outEdges[i]]});
 
-            if ( type == TYPE.RELATIONSHIP )
-                this._addVertex( "chhub_" + inputG[v].name, null, TYPE.CHILDHUB, null, width );
+            if (out.length > 0)
+                data["outedges"] = out;
+
+            output.push(data);
         }
 
-        for (var v = 0; v < inputG.length; v++) {
-            var nextV = inputG[v];
-
-            var vID    = this.getVertexIdByName( nextV.name );
-            var origID = vID;
-
-            if (this.type[vID] == TYPE.RELATIONSHIP) {
-                // replace edges from rel node by edges from childhub node
-                var childhubID = this.getVertexIdByName( "chhub_" + nextV.name );
-                vID = childhubID;
-            }
-
-            var maxChildEdgeWeight = 0;
-
-            if (nextV.outedges) {
-                for (var outE = 0; outE < nextV.outedges.length; outE++) {
-                    var targetName = nextV.outedges[outE].to;
-                    var weight     = 1;
-                    if (nextV.outedges[outE].hasOwnProperty('weight'))
-                        weight = nextV.outedges[outE].weight;
-
-                    if ( weight > maxChildEdgeWeight )
-                        maxChildEdgeWeight = weight;
-
-                    var targetID   = this.getVertexIdByName( targetName );
-
-                    this._addEdge( vID, targetID, weight );
-                }
-            }
-
-            if (this.type[origID] == TYPE.RELATIONSHIP) {
-                this._addEdge( origID, vID, maxChildEdgeWeight );
-            }
-        }
-
-        // find all vertices without an in-edge and vertices without out-edges
-        this._updateLeafAndParentlessNodes();
-
-        this.defaultNonPersonNodeWidth = defaultNonPersonNodeWidth;
-        this.defaultPersonNodeWidth    = defaultPersonNodeWidth;
-
-        this.validate();
+        return output;
     },
-
-    _updateLeafAndParentlessNodes: function () {
-        this.parentlessNodes = [];
-        this.leafNodes       = [];
-
-        // find all vertices without an in-edge
-        for (var vid = 0; vid < this.v.length; vid++) {
-            if ( this.getInEdges(vid).length == 0 ) {
-                this.parentlessNodes.push(vid);
-            }
-
-            if ( this.getOutEdges(vid).length == 0 ) {
-                this.leafNodes.push(vid);
-            }
-        }
-    },
-    //-----------------------[construction from user input]-
-
 
     //-[construction for ordering]--------------------------
 
     // After rank assignment, edges between nodes more than one rank apart are replaced by
     // chains of unit length edges between temporary or ‘‘virtual’’ nodes. The virtual nodes are
     // placed on the intermediate ranks, converting the original graph into one whose edges connect
-    // only nodes on adjacent ranks. Self-edges are ignored in this pass, and multi-edges are merged
-    // as in the previous pass.
+    // only nodes on adjacent ranks
     //
     // Note: ranks is modified to contain ranks of virtual nodes as well
 
-    makeGWithSplitMultiRankEdges: function (ranks, maxRank) {
+    makeGWithSplitMultiRankEdges: function (ranks, maxRank, doNotValidate) {
         var newG = new InternalGraph();
 
         newG.defaultNonPersonNodeWidth = this.defaultNonPersonNodeWidth;
@@ -160,7 +224,7 @@ InternalGraph.prototype = {
                 if (targetRank < sourceRank)
                     throw "Assertion failed: only forward edges";
 
-                if (targetRank == sourceRank + 1) {
+                if (targetRank == sourceRank + 1 || targetRank == sourceRank ) {
                     newG._addEdge( sourceV, targetV, weight );
                 }
                 else {
@@ -183,11 +247,66 @@ InternalGraph.prototype = {
         newG.parentlessNodes = this.parentlessNodes;
         newG.leafNodes       = this.leafNodes;
 
+        if (!doNotValidate)
+            newG.validate();
+
+        return newG;
+    },
+
+    makeGWithCollapsedMultiRankEdges: function () {
+        // performs the opposite of what makeGWithSplitMultiRankEdges() does
+        var newG = new InternalGraph();
+
+        newG.defaultNonPersonNodeWidth = this.defaultNonPersonNodeWidth;
+        newG.defaultPersonNodeWidth    = this.defaultPersonNodeWidth;
+
+        // add all original vertices
+        for (var i = 0; i <= this.maxRealVertexId; i++) {
+            newG._addVertex( this.idToName[i], i, this.type[i], this.properties[i], this.vWidth[i] );
+        }
+
+        // go over all original edges:
+        // - if edge conects two non-virtual vertices just add it
+        // - else add an edge to the first non-virtual edge at the end of the chain of virtual edges
+        for (var sourceV = 0; sourceV <= this.maxRealVertexId; sourceV++) {
+
+            for (var i = 0; i < this.v[sourceV].length; i++) {
+                var targetV = this.v[sourceV][i];
+
+                var weight = this.getEdgeWeight(sourceV, targetV);
+
+                while (targetV > this.maxRealVertexId)
+                    tragetV = this.getOutEdges(targetV)[0];
+
+                newG._addEdge( sourceV, targetV, weight );
+            }
+        }
+
+        newG.parentlessNodes = this.parentlessNodes;
+        newG.leafNodes       = this.leafNodes;
+
         newG.validate();
 
         return newG;
     },
+
     //--------------------------[construction for ordering]-
+
+    _updateLeafAndParentlessNodes: function () {
+        this.parentlessNodes = [];
+        this.leafNodes       = [];
+
+        // find all vertices without an in-edge
+        for (var vid = 0; vid < this.v.length; vid++) {
+            if ( this.getInEdges(vid).length == 0 ) {
+                this.parentlessNodes.push(vid);
+            }
+            else
+            if ( this.getOutEdges(vid).length == 0 ) {
+                this.leafNodes.push(vid);
+            }
+        }
+    },
 
     // id: optional. If not given next available is used.
     _addVertex: function(name, id, type, properties, width) {
@@ -278,6 +397,8 @@ InternalGraph.prototype = {
     },
 
     validate: function() {
+        if( this.v.length == 0 ) return;
+
         for (var v = 0; v < this.v.length; v++) {
             var outEdges = this.getOutEdges(v);
             var inEdges  = this.getInEdges(v);
@@ -482,7 +603,7 @@ InternalGraph.prototype = {
 //==================================================================================================
 
 RankedSpanningTree = function() {
-    this.maxRank = undefined;
+    this.maxRank = 0;
 
     this.edges  = [];         // similar to G.v - list of list of edges: [ [...], [...] ]
                               // but each edge is listed twice: both for in- and out-vertex
@@ -499,6 +620,8 @@ RankedSpanningTree.prototype = {
         //   Nodes are placed in the queue when they have no unscanned in-edges.
         //   As nodes are taken off the queue, they are assigned the least rank
         //   that satisfies their in-edges, and their out-edges are marked as scanned.
+
+        if (G.v.length == 0) return;
 
         this.maxRank = initRank;
 
@@ -572,16 +695,32 @@ RankedSpanningTree.prototype = {
 
 //==================================================================================================
 
-Ordering = function() {
-    this.order      = [];        // array of arrays - for each rank list of vertices in order
-    this.vOrder     = [];        // array - for each v vOrder[v] = order within rank
+Ordering = function (order, vOrder) {
+    this.order  = order;        // 1D array of 1D arrays - for each rank list of vertices in order
+    this.vOrder = vOrder;       // 1D array - for each v vOrder[v] = order within rank
+
+    // TODO: verify validity
 };
 
 Ordering.prototype = {
 
-    init: function(order, vOrder) {
-        this.order      = order;
-        this.vOrder     = vOrder;
+    serialize: function() {
+        return this.order;
+    },
+
+    deserialize: function(data) {
+        this.order  = data;
+        this.vOrder = [];
+
+        //console.log("Order deserialization: [" + stringifyObject(this.order) + "]");
+
+        // recompute vOrders
+        for (var r = 0; r < this.order.length; r++) {
+            var ordersAtRank = this.order[r];
+            for (var i = 0; i < ordersAtRank.length; i++) {
+                this.vOrder[ordersAtRank[i]] = i;
+            }
+        }
     },
 
     insert: function(rank, insertOrder, vertex) {
@@ -639,7 +778,7 @@ Ordering.prototype = {
 
     copy: function () {
         // returns a deep copy
-        var newO = new Ordering();
+        var newO = new Ordering([],[]);
 
         _copy2DArray(this.order, newO.order);     // copy a 2D array
         newO.vOrder = this.vOrder.slice(0);       // fast copy of 1D arrays
@@ -688,6 +827,10 @@ Ordering.prototype = {
 	        }
 
 	    this.insert(rank, newOrder, v);
+	},
+
+	insertRank: function (insertBeforeRank) {
+	    this.order.splice(insertBeforeRank, 0, []);
 	}
 };
 
@@ -727,6 +870,14 @@ function shuffleArray (array) {
 }
 */
 
+function removeFirstOccurrenceByValue(array, item){
+    for(var i in array){
+        if(array[i]==item){
+            array.splice(i,1);
+            break;
+            }
+    }
+}
 
 function swap (array, x, y) {
     var b = array[y];
@@ -738,7 +889,7 @@ function permute2DArrayInFirstDimension (permutations, array, from) {
    var len = array.length;
 
    if (from == len-1) {
-       if ( len == 1 || Math.max.apply(null, array[0]) < Math.max.apply(null, array[len-1]) )   // discard mirror copies of other permutations
+       //if ( len == 1 || Math.max.apply(null, array[0]) < Math.max.apply(null, array[len-1]) )   // discard mirror copies of other permutations
            permutations.push(_makeFlattened2DArrayCopy(array));
        return;
    }
@@ -754,8 +905,8 @@ function permute2DArrayInFirstDimension (permutations, array, from) {
 
 // used for profiling code
 Timer = function() {
-    var startTime = undefined;
-    var lastCheck = undefined;
+    this.startTime = undefined;
+    this.lastCheck = undefined;
     this.start();
 };
 
@@ -764,6 +915,10 @@ Timer.prototype = {
     start: function() {
         this.startTime = new Date().getTime();
         this.lastCheck = this.startTime;
+    },
+
+    restart: function() {
+        this.start();
     },
 
     report: function() {
