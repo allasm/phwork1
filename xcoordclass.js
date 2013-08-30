@@ -30,19 +30,23 @@ XCoord.prototype = {
         this.type  = type;
     },
 
-    getLeftMostNoDisturbPosition: function(v) {
+    getSeparation: function (v1, v2) {
+        if (this.type[v1] == TYPE.RELATIONSHIP || this.type[v2] == TYPE.RELATIONSHIP)
+            return this.horizRelSeparationDist;
+
+        return this.horizPersSeparationDist;
+    },
+
+    getLeftMostNoDisturbPosition: function(v, allowNegative) {
         var leftBoundary = this.halfWidth[v];
 
         var order = this.order.vOrder[v];
         if ( order > 0 ) {
             var leftNeighbour = this.order.order[this.ranks[v]][order-1];
 
-            var separation = this.horizPersSeparationDist;
-            //if (this.type[v] == TYPE.RELATIONSHIP || this.type[leftNeighbour] == TYPE.RELATIONSHIP)
-            //    separation = this.horizRelSeparationDist;
-
-            leftBoundary += this.getRightEdge(leftNeighbour) + separation;
+            leftBoundary += this.getRightEdge(leftNeighbour) + this.getSeparation(v, leftNeighbour);
         }
+        else if (allowNegative) return -Infinity;
 
         return leftBoundary;
     },
@@ -53,7 +57,7 @@ XCoord.prototype = {
         var order = this.order.vOrder[v];
         if ( order < this.order.order[this.ranks[v]].length-1 ) {
             var rightNeighbour = this.order.order[this.ranks[v]][order+1];
-            rightBoundary = this.getLeftEdge(rightNeighbour) - this.horizPersSeparationDist - this.halfWidth[v];
+            rightBoundary = this.getLeftEdge(rightNeighbour) - this.getSeparation(v, rightNeighbour) - this.halfWidth[v];
         }
 
         return rightBoundary;
@@ -92,15 +96,16 @@ XCoord.prototype = {
         for (var i = order + 1; i < this.order.order[rank].length; i++) {
             var rightNeighbour = this.order.order[rank][i];
 
-            if (this.getLeftEdge(rightNeighbour) >= rightEdge + this.horizPersSeparationDist) {
+            if (this.getLeftEdge(rightNeighbour) >= rightEdge + this.getSeparation(v, rightNeighbour)) {
                 // we are not interfering with the vertex to the right
                 break;
 
             }
 
-            this.xcoord[rightNeighbour] = rightEdge + this.horizPersSeparationDist + this.halfWidth[rightNeighbour];
+            this.xcoord[rightNeighbour] = rightEdge + this.getSeparation(v, rightNeighbour) + this.halfWidth[rightNeighbour];
 
             rightEdge = this.getRightEdge(rightNeighbour);
+            v         = rightNeighbour;
         }
 
         return amount;
@@ -201,7 +206,6 @@ VerticalLevels = function() {
                                       // (where levelID is for levels between this and previous ranks)
 };
 
-VerticalLevels.prototype = {
-
-};
+/*VerticalLevels.prototype = {
+};*/
 
