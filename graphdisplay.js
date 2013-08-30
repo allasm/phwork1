@@ -8,31 +8,67 @@ function display_raw_graph(G, renderTo) {
 }
 
 
-function addChild (form, positionedGraph, redrawRenderTo) {
+function addNewChild (form, positionedGraph, redrawRenderTo) {
     var inputs = form.getElementsByTagName('input');
     for (var index = 0; index < inputs.length; ++index) {
         console.log("Adding child to: " + inputs[index].value);
-        positionedGraph.addChild(parseInt(inputs[index].value));
+        positionedGraph.addNewChild(parseInt(inputs[index].value));
     }
 
     display_processed_graph(positionedGraph, redrawRenderTo);
-
     return false;
 }
 
-function addParents (form, positionedGraph, redrawRenderTo) {
+function addNewParents (form, positionedGraph, redrawRenderTo) {
     var inputs = form.getElementsByTagName('input');
     for (var index = 0; index < inputs.length; ++index) {
         console.log("Adding parents to: " + inputs[index].value);
-        positionedGraph.addParents(parseInt(inputs[index].value));
+        positionedGraph.addNewParents(parseInt(inputs[index].value));
     }
 
     display_processed_graph(positionedGraph, redrawRenderTo);
+    return false;
+}
 
+function addNewRelationship (form, positionedGraph, redrawRenderTo) {
+    var inputs = form.getElementsByTagName('input');
+    for (var index = 0; index < inputs.length; ++index) {
+        console.log("Adding new partner to: " + inputs[index].value);
+        positionedGraph.addNewRelationship(parseInt(inputs[index].value));
+    }
+
+    display_processed_graph(positionedGraph, redrawRenderTo);
+    return false;
+}
+
+function removeNode (positionedGraph, redrawRenderTo) {
     return false;
 }
 
 function repositionAll (positionedGraph, redrawRenderTo) {
+    positionedGraph.repositionAll();
+    display_processed_graph(positionedGraph, redrawRenderTo);
+    return false;
+}
+
+function redrawAll (positionedGraph, redrawRenderTo) {
+    positionedGraph.redrawAll();
+    display_processed_graph(positionedGraph, redrawRenderTo);
+    return false;
+}
+
+function showJSON (positionedGraph, redrawRenderTo) {
+    positionedGraph.toJSON();
+    return false;
+}
+
+function fromJSON (positionedGraph, redrawRenderTo) {
+    var msg = prompt("Enter graph representation:");
+    console.log("Read: " + msg);
+
+    positionedGraph.fromJSON(msg);
+
+    display_processed_graph(positionedGraph, redrawRenderTo);
     return false;
 }
 
@@ -43,17 +79,39 @@ function checkNodeId (element) {
 function display_controls(positionedGraph, controlRenderTo, redrawRenderTo) {
     var str = "'" + redrawRenderTo + "'";
     document.getElementById(controlRenderTo).innerHTML = "\
-        <form method=\"post\" action=\"\" onsubmit=\"return addChild(this, " + positionedGraph + ", " + str  + ")\">\
-            <input type=\"text\" name=\"nodeid\" id=\"nodeid\" onkeyup=\"checkNodeId(this)\"/>\
-            <button style=\"width: 100px\" type=\"submit\" id=\"submit\">Add Child</button>\
+        <form method=\"post\" action=\"\" onsubmit=\"return assignParents(this, " + positionedGraph + ", " + str  + ")\">\
+            child: <input type=\"text\" style=\"width: 40px\" name=\"nodeid1\" id=\"nodeid1\" onkeyup=\"checkNodeId(this)\"/>\
+            relationship or person: <input type=\"text\" style=\"width: 40px\" name=\"nodeid2\" id=\"nodeid2\" onkeyup=\"checkNodeId(this)\"/>\
+            <button style=\"width: 120px\" type=\"submit\" id=\"submitParents\">Assign Parents</button>\
         </form>\
-        <form method=\"post\" action=\"\" onsubmit=\"return addParents(this, " + positionedGraph + ", " + str  + ")\">\
-            <input type=\"text\" name=\"nodeid\" id=\"nodeid\" onkeyup=\"checkNodeId(this)\"/>\
-            <button style=\"width: 100px\" type=\"submit\" id=\"submit\">Add Parents</button>\
+        <form method=\"post\" action=\"\" onsubmit=\"return addNewChild(this, " + positionedGraph + ", " + str  + ")\">\
+            relationship or childhub: <input type=\"text\" style=\"width: 40px\" name=\"nodeid\" id=\"nodeid\" onkeyup=\"checkNodeId(this)\"/>\
+            <button style=\"width: 120px\" type=\"submit\" id=\"submitNewChild\">Add New Child</button>\
+        </form>\
+        <form method=\"post\" action=\"\" onsubmit=\"return addNewParents(this, " + positionedGraph + ", " + str  + ")\">\
+            person: <input type=\"text\" style=\"width: 40px\" name=\"nodeid\" id=\"nodeid\" onkeyup=\"checkNodeId(this)\"/>\
+            <button style=\"width: 150px\" type=\"submit\" id=\"submitNewParents\">Add New Parents</button>\
+        </form>\
+        <form method=\"post\" action=\"\" onsubmit=\"return addNewRelationship(this, " + positionedGraph + ", " + str  + ")\">\
+            person: <input type=\"text\" style=\"width: 40px\" name=\"nodeid\" id=\"nodeid\" onkeyup=\"checkNodeId(this)\"/>\
+            <button style=\"width: 150px\" type=\"submit\" id=\"submitNewRel\">Add New Relationship</button>\
+        </form>\
+        <form method=\"post\" action=\"\" onsubmit=\"return removeNode(this, " + positionedGraph + ", " + str  + ")\">\
+            nodeId: <input type=\"text\" style=\"width: 40px\" name=\"nodeid\" id=\"nodeid\" onkeyup=\"checkNodeId(this)\"/>\
+            <button style=\"width: 150px\" type=\"submit\" id=\"submitRemove\">Remove Node</button>\
         </form>\
         <form method=\"post\" action=\"\" onsubmit=\"return repositionAll(" + positionedGraph + ", " + str  + ")\">\
-            <button type=\"submit\" id=\"submit\">Reposition all</button>\
-        </form>";
+            <button type=\"submit\" id=\"submitReposition\">Reposition all (change X coordinate, keep order)</button>\
+        </form>\
+        <form method=\"post\" action=\"\" onsubmit=\"return redrawAll(" + positionedGraph + ", " + str  + ")\">\
+            <button type=\"submit\" id=\"submitRedraw\">Redraw all (recompute layout)</button>\
+        </form>\
+        <form method=\"post\" action=\"\" onsubmit=\"return showJSON(" + positionedGraph + ", " + str  + ")\">\
+            <button type=\"submit\" id=\"submitJSON\">To JSON</button>\
+        </form>\
+        <form method=\"post\" action=\"\" onsubmit=\"return fromJSON(" + positionedGraph + ", " + str  + ")\">\
+            <button type=\"submit\" id=\"readJSON\">From JSON</button>\
+        </form>"
 }
 
 function drawPersonBox ( canvas, scale, x, scaledY, width, label, sex ) {
@@ -175,6 +233,10 @@ function drawVerticalRelationshipLine( canvas, scale, x, scaledY, u_x, u_scaledY
     line.translate(0.5, 0.5);
 }
 
+function browserVisibleWidth(){
+   return window.innerWidth||document.documentElement.clientWidth||document.body.clientWidth||0;
+}
+
 function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg) {
 
     //if (!debugPrint) printObject(renderPackage);
@@ -201,7 +263,7 @@ function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg
     var maxY = (rankYcoord[ordering.order.length-1] + 200);
     var maxX = scale.xshift + (Math.max.apply(Math, positions) + Math.max.apply(Math, G.vWidth))*scale.xscale;
 
-    var canvas = Raphael(renderTo, maxX, maxY);
+    var canvas = Raphael(renderTo, Math.max(browserVisibleWidth(), maxX), Math.max(100, maxY));
 
     // rank 0 has removed virtual nodes
     for ( var r = 1; r < ordering.order.length; r++ ) {
@@ -295,7 +357,8 @@ function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg
                     }
                 }
 
-                drawPersonBox( canvas, scale, x, y, width, G.getVertexNameById(v), G.properties[v]["sex"]);
+                //drawPersonBox( canvas, scale, x, y, width, G.getVertexNameById(v) + "/" + v.toString() /*positions[v].toString()*/ , G.properties[v]["sex"]);
+                drawPersonBox( canvas, scale, x, y, width, v.toString() + "/" + positions[v].toString() , G.properties[v]["sex"]);
                 continue;
             }
 
@@ -373,7 +436,7 @@ function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debu
     var xScale = 4.0;
 
     var maxX = 50 + (Math.max.apply(Math, positions) + Math.max.apply(Math, G.vWidth))*xScale;
-    var canvas = Raphael(renderTo, maxX, 1200);
+    var canvas = Raphael(renderTo, Math.max(browserVisibleWidth(), maxX), 1200);
 
     var curY = 20;
 
