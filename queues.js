@@ -4,7 +4,7 @@ Queue = function() {
 
 Queue.prototype = {
 
-    pushAll: function(list) {
+    setTo: function(list) {
         this.data = list.slice(0);
     },
 
@@ -29,7 +29,7 @@ Stack = function() {
 
 Stack.prototype = {
 
-    pushAll: function(list) {
+    setTo: function(list) {
         this.data = list.slice(0);
     },
 
