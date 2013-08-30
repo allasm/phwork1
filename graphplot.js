@@ -3,47 +3,52 @@ DrawGraph = function( internalG,
                       horizontalRelSeparationDist,    // mandatory argument
                       maxInitOrderingBuckets,         // optional
                       maxOrderingIterations,          // optional
-                      maxXcoordIterations )           // optional
+                      maxXcoordIterations,            // optional
+                      displayDebug )                  // optional
 {
     this.G  = internalG;         // real graph (InternalGraph class)
     this.GG = undefined;         // same graph with multi-rank edges replaced by virtual vertices/edges
 
-    this.ranks     = undefined;  // array: index = vertex id, value = rank
-    this.maxRank   = undefined;  // int:   max rank in the above array (maintained for performance reasons)
+    this.ranks     = undefined;  // 1D array: index = vertex id, value = rank
+    this.maxRank   = undefined;  // integer:  max rank in the above array (maintained for performance reasons)
 
     this.order     = undefined;  // class: Ordering
 
-    this.vertLevel = undefined;
-    this.positions = undefined;
+    this.positions = undefined;  // 1D array: index = vertex id, value = x-coordinate
+    this.vertLevel = undefined;  // class: VerticalLevels
 
-    this.ancestors = undefined;  // for each node lists all its ancestors and the closest relationship distance
-    this.consangr  = undefined;  // set of consanguineous relationship IDs
+    this.ancestors = undefined;  // {}: for each node contains a set of all its ancestors and the closest relationship distance
+    this.consangr  = undefined;  // {}: for each node a set of consanguineous relationship IDs
 
     this.initialize( horizontalPersonSeparationDist, horizontalRelSeparationDist,
-                     maxInitOrderingBuckets, maxOrderingIterations, maxXcoordIterations );
+                     maxInitOrderingBuckets, maxOrderingIterations, maxXcoordIterations, displayDebug );
 };
 
 DrawGraph.prototype = {
 
     maxInitOrderingBuckets: 5,           // it may take up to ~factorial_of_this_number iterations to generate initial ordering
     maxOrderingIterations:  24,          // up to so many iterations are spent optimizing initial ordering
-    maxXcoordIterations:    8,
+    maxXcoordIterations:    4,
     xCoordEdgeWeightValue:  true,        // when optimizing edge length/curvature take
                                          // edge weight into account or not
-    horizontalPersonSeparationDist: 1,
-    horizontalRelSeparationDist:    1,
+    horizontalPersonSeparationDist: 8,
+    horizontalRelSeparationDist:    6,
+
+    displayDebug: false,
 
     initialize: function( horizontalPersonSeparationDist,
                           horizontalRelSeparationDist,
                           maxInitOrderingBuckets,
                           maxOrderingIterations,
-                          maxXcoordIterations )
+                          maxXcoordIterations,
+                          displayDebug )
     {
         if (horizontalPersonSeparationDist) this.horizontalPersonSeparationDist = horizontalPersonSeparationDist;
         if (horizontalRelSeparationDist)    this.horizontalRelSeparationDist    = horizontalRelSeparationDist;
         if (maxInitOrderingBuckets)         this.maxInitOrderingBuckets         = maxInitOrderingBuckets;
         if (maxOrderingIterations)          this.maxOrderingIterations          = maxOrderingIterations;
         if (maxXcoordIterations)            this.maxXcoordIterations            = maxXcoordIterations;
+        if (displayDebug)                   this.displayDebug                   = displayDebug;
 
         if (this.maxInitOrderingBuckets > 8)
             throw "Too many ordering buckets: number of permutations (" + this.maxInitOrderingBuckets.toString() + "!) is too big";
@@ -126,6 +131,8 @@ DrawGraph.prototype = {
 
     compress_ranks: function (ranks, maxRank)
     {
+        if (!maxRank) return; // no nodes
+
         // re-ranks all nodes as far down the tree as possible (e.g. people with no
         // parents in the tree should be on the same level as their first documented
         // relationship partner)
@@ -277,69 +284,89 @@ DrawGraph.prototype = {
     //=[ordering]========================================================================
     ordering: function(maxInitOrderingBuckets, maxOrderingIterations)
     {
-        var best                = undefined;
-        var bestCrossings       = Infinity;
+        if (this.GG.v.length == 0) return new Ordering([],[]);  // empty graph
 
-        var rootlessPartners  = this.findAllRootlessPartners();
+        var best          = undefined;
+        var bestCrossings = Infinity;
+
+        var rootlessPartners = this.findAllRootlessPartners();
+        // remove them from the graph entirely, because
+        //  1) those are easy to place later
+        //  2) reduces graph size/complexity, improving performance (both speed & quality) of other heuristics
+        this.disconnectRootlessPartners(rootlessPartners);
+
+        var leafSiblings = this.findLeafSiblings();
+        this.disconnectLeafSiblings(leafSiblings);
+
         var permutationsRoots = this.computePossibleParentlessNodePermutations(maxInitOrderingBuckets, rootlessPartners);
-        var permutationsLeafs = this.computePossibleLeafNodePermutations(maxInitOrderingBuckets);
+        var permutationsLeafs = this.computePossibleLeafNodePermutations(maxInitOrderingBuckets, leafSiblings);
 
         var initOrderIterTotal = 0;  // just for reporting
 
         var useStack = false;
 
+        var timer = new Timer();
+
+        //permutationsRoots = [[27, 0, 5, 4, 8, 9, 1, 28]];
+        //useStack = true;
+
         while ( true ) {
+            var timer2 = new Timer();
             for (var initOrderIter = 0; initOrderIter < permutationsRoots.length; initOrderIter++ ) {
                 initOrderIterTotal++;
 
-                order = this.init_order_top_to_bottom(permutationsRoots[initOrderIter], rootlessPartners, useStack);
+                order = this.init_order_top_to_bottom(permutationsRoots[initOrderIter], useStack);
 
-                this.transpose(order, false);  // fix locally-fixable edge crossings,
-                                               // but do not bother doing minor optimizations (for performance reasons)
+                this.transpose(order, false, bestCrossings*4 + 5);  // fix locally-fixable edge crossings,
+                                                                // but do not bother doing minor optimizations (for performance reasons)
 
                 var numCrossings = this.edge_crossing(order);
 
                 if ( numCrossings < bestCrossings ) {
                     best          = order.copy();
                     bestCrossings = numCrossings;
-                    //console.log("UsingP: " + stringifyObject(permutationsRoots[initOrderIter]) + " " + useStack.toString());
+                    console.log("UsingP: " + stringifyObject(permutationsRoots[initOrderIter]) + " " + useStack.toString());
                     if ( numCrossings == 0 ) break;
                 }
             }
+            //timer2.printSinceLast("Top-to-bottom: ");
 
             if ( bestCrossings == 0 ) break;
-
             for (var initOrderIter2 = 0; initOrderIter2 < permutationsLeafs.length; initOrderIter2++ ) {
                 initOrderIterTotal++;
 
                 order = this.init_order_bottom_to_top(permutationsLeafs[initOrderIter2], useStack);
 
-                this.transpose(order, false);  // fix locally-fixable edge crossings
+                this.transpose(order, false, bestCrossings*4 + 5);  // fix locally-fixable edge crossings
 
-                var numCrossings    = this.edge_crossing(order);
+                var numCrossings = this.edge_crossing(order);
 
                 if ( numCrossings < bestCrossings ) {
                     best          = order.copy();
                     bestCrossings = numCrossings;
-                    //console.log("UsingL: " + stringifyObject(permutationsRoots[initOrderIter]) + " " + useStack.toString());
+                    console.log("UsingL: " + stringifyObject(permutationsLeafs[initOrderIter2]) + " " + useStack.toString());
                     if ( numCrossings == 0 ) break;
                 }
             }
+            //timer2.printSinceLast("Bottom-to-top: ");
 
             if ( bestCrossings == 0 ) break;
             if ( useStack ) break;
             useStack = true;
         }
 
+        timer.printSinceLast("Initial ordering: ");
+
+        var bestEdgeLengthScore = this.edge_length_score(best);
 
         console.log("Initial ordering: " + _printObjectInternal(best.order, 0));
-        console.log("Initial ordering:  numCrossings= " + bestCrossings);
+        console.log("Initial ordering:  numCrossings= " + bestCrossings + ",  edhgeLengthScore= " + bestEdgeLengthScore);
 
+        //this.reconnectRootlessPartners(best, rootlessPartners);
+        //this.reconnectLeafSiblings(best, leafSiblings);
         //return best;
 
         var noChangeIterations = 0;
-
-        var bestEdgeLengthScore = this.edge_length_score(best);
 
         var order = best.copy();
 
@@ -380,10 +407,22 @@ DrawGraph.prototype = {
             }
         }
 
-        // try to optimize long edge placement (as above, bad adjustments are discarded)
+        this.transpose(best, true);
+
+        this.reconnectRootlessPartners(best, rootlessPartners);
+        this.transpose(best, true);
+
+        this.reconnectLeafSiblings(best, leafSiblings);
+        //this.transpose(best, true);
+
+        timer.restart();
+
+        //console.log("-----> " + stringifyObject(this.GG));
+
+        // try to optimize long edge placement (bad adjustments are discarded)
         var newBestCrossings = this.transposeLongEdges(best, bestCrossings);
 
-        this.transpose(best, true);
+        timer.printSinceLast("Ordering long edges: ");
 
         console.log("Ordering stats:  initOrderIter= " + initOrderIterTotal + ",  reOrderingIter= " + i + ",  noChangeIterations= " + noChangeIterations);
         console.log("Final ordering: " + _printObjectInternal(best.order, 0));
@@ -402,13 +441,14 @@ DrawGraph.prototype = {
         for (var i = 0; i < this.GG.parentlessNodes.length; i++) {
             var v = this.GG.parentlessNodes[i];
 
-            if ( this.GG.getOutEdges(v).length == 1 ) {
+            if ( this.GG.getOutEdges(v).length == 1 && this.GG.getOutEdges(v).length > 0) {
                 var relationShipNode = this.GG.getOutEdges(v)[0];
 
                 var parents = this.GG.getInEdges(relationShipNode);
 
                 var otherParent = (parents[0] == v) ? parents[1] : parents[0];
 
+                //if (this.GG.getInEdges(otherParent).length > 0 || v > otherParent || this.GG.getOutEdges(otherParent).length > 1) {
                 if (this.GG.getInEdges(otherParent).length > 0) {
                     if (rootlessPartners[otherParent])
                         rootlessPartners[otherParent].push(v);
@@ -421,6 +461,183 @@ DrawGraph.prototype = {
         console.log("Found rootless partners: " + stringifyObject(rootlessPartners));
         return rootlessPartners;
     },
+
+    disconnectRootlessPartners: function(rootlessPartners)
+    {
+        for (var p in rootlessPartners) {
+            if (rootlessPartners.hasOwnProperty(p)) {
+                var rootless = rootlessPartners[p];
+                for (var i = 0; i < rootless.length; i++) {
+                    var v        = rootless[i];
+                    var outEdges = this.GG.getOutEdges(v);
+                    var relNode  = outEdges[0];
+
+                    // remove edge v->relNode from the graph. Only remove the in-edge, as outedge will never be scanned
+                    this.GG.inedges[relNode] = [p];    // originally it was [p,v]
+                }
+
+            }
+        }
+    },
+
+    reconnectRootlessPartners: function(order, rootlessPartners)
+    {
+        //console.log("Order before reconnect rootless: " + stringifyObject(order));
+
+        for (var p in rootlessPartners) {
+            if (rootlessPartners.hasOwnProperty(p)) {
+
+                // now check all rootless partners of p. Will place them next to p in the ordering
+
+                var partnersToTheLeft  = 0;
+                var partnersToTheRight = 0;
+                var pOrder             = order.vOrder[p];
+                var rank               = this.ranks[p];
+
+                var pRelationships = this.GG.getOutEdges(p);
+                for (var j = 0; j < pRelationships.length; j++) {
+                    if ( this.GG.isRelationship(pRelationships[j]) ) {   // ignore long edges
+                        var parents = this.GG.getInEdges(pRelationships[j]);
+                        if ( parents.length == 2 ) { // e.g. skip relationships with removed parents
+                            var partner = (parents[0] == p) ? parents[1] : parents[0];
+                            if ( order.vOrder[partner] > pOrder )
+                                partnersToTheRight++;
+                            else
+                                partnersToTheLeft++;
+                        }
+                    }
+                }
+
+                var rootless = rootlessPartners[p];
+                for (var i = 0; i < rootless.length; i++) {
+                    var v        = rootless[i];
+                    var outEdges = this.GG.getOutEdges(v);
+                    var relNode  = outEdges[0];
+
+                    // add back the v->relNode edge
+                    this.GG.inedges[relNode] = [p, v];
+
+                    // insert v into ordering: insert on the side with less partners.
+                    // ideally we should insert according to the relationship node order, but that will be auto-fixed by transpose()
+
+                    if (partnersToTheRight <= partnersToTheLeft) {
+                        partnersToTheRight++;
+                        order.insert(rank, pOrder+1, v);
+                    }
+                    else {
+                        partnersToTheLeft++;
+                        order.insert(rank, pOrder, v);
+                    }
+                }
+
+            }
+        }
+
+        //console.log("Order after reconnect rootless: " + stringifyObject(order));
+   },
+
+    findLeafSiblings: function ()
+    {
+        // finds all sinlings of non-leaf people which are leaves
+
+        var leafSiblings = {};
+
+        for (var i = 0; i < this.GG.leafNodes.length; i++) {
+            var v = this.GG.leafNodes[i];
+
+            var childHubNode = this.GG.getInEdges(v)[0];
+
+            if (leafSiblings.hasOwnProperty(childHubNode)) continue;  // we've already processed children of this childhub
+
+            var children = this.GG.getOutEdges(childHubNode);
+
+            if (children.length > 1) {
+                leafSiblings[childHubNode] = [];
+
+                var keepChild = v;  // need ot keep at least one leaf per childhub that has on so that
+                                    // bottom-to-top ordering has an option of juggling with this leaf/childhub
+
+                for (var j = 1; j < children.length; j++) {
+                    var child  = children[j];
+                    var outNum = this.GG.getOutEdges(child).length;
+
+                    if (child != keepChild && outNum == 0 )
+                        leafSiblings[childHubNode].push(child);
+                }
+            }
+        }
+
+        console.log("Found leaf siblings: " + stringifyObject(leafSiblings));
+        return leafSiblings;
+    },
+
+    disconnectLeafSiblings: function(leafSiblings)
+    {
+        for (var p in leafSiblings) {
+            if (leafSiblings.hasOwnProperty(p)) {
+                var leaves = leafSiblings[p];
+                for (var i = 0; i < leaves.length; i++) {
+                    var l = leaves[i];
+
+                    // remove edge p->l from the graph
+                    // (don't bother about the weight, and ignore in-edge as it wil never be scanned before re-connection)
+
+                    removeFirstOccurrenceByValue( this.GG.v[p], l);
+                }
+            }
+        }
+    },
+
+    reconnectLeafSiblings: function(order, leafSiblings)
+    {
+        //console.log("Order before reconnect leaves: " + stringifyObject(order));
+
+        for (var p in leafSiblings) {
+            if (leafSiblings.hasOwnProperty(p)) {
+                var leaves = leafSiblings[p];
+                for (var i = 0; i < leaves.length; i++) {
+                    var l = leaves[i];
+
+                    //console.log("inserting: " + l);
+
+                    // add back the p->l edge
+                    this.GG.v[p].push(l);
+
+                    var rank = this.ranks[l];
+
+                    order.insert(rank, 0, l);
+
+                    var bestO     = 0;
+                    var bestCross = this.edge_crossing(order, rank);
+                    var bestScore = this.edge_length_score(order,rank);
+
+                    // insert l at the best possible order
+                    for (var o = 0; o < order.order[rank].length-1; o++) {
+
+                        order.exchange(rank, o, o+1);
+
+                        var newEdgeCrossings = this.edge_crossing(order, rank);
+                        var newLengthScore   = this.edge_length_score(order,rank);
+
+                        //console.log("order: " + order.vOrder[l] + ", cross: " + newEdgeCrossings);
+
+                        if (newEdgeCrossings < bestCross ||
+                            (newEdgeCrossings == bestCross && newLengthScore < bestScore) ) {
+                            bestO     = o+1;
+                            bestCross = newEdgeCrossings;
+                            bestScore = newLengthScore;
+                        }
+                    }
+
+                    order.moveVertexToOrder(rank, order.vOrder[l], bestO);
+
+                    //console.log("inserted at: " + order.vOrder[l]);
+                }
+            }
+        }
+
+        //console.log("Order after reconnect leaves: " + stringifyObject(order));
+   },
 
     computePossibleParentlessNodePermutations: function(maxInitOrderingBuckets, rootlessPartners)
     {
@@ -478,8 +695,8 @@ DrawGraph.prototype = {
             }
 
             nextBucket++;
-            if (nextBucket >= maxInitOrderingBuckets)
-                nextBucket = 0; // TODO: pick a bucket with the smallest number of nodes in it
+            if (nextBucket >= maxInitOrderingBuckets)   // TODO: activate the mode when a bucket which has more related nodes in it will be picked for each next node?
+                nextBucket = 0;
         }
 
         var permutations = [];
@@ -487,7 +704,7 @@ DrawGraph.prototype = {
         // Now compute all possible permutations of the buckets
         permute2DArrayInFirstDimension( permutations, buckets, 0);
 
-        //printObject(buckets);
+        printObject(buckets);
         //printObject(permutations);
         //permutations = [ this.GG.parentlessNodes ];  //DEBUG: no permutations
         //permutations = [[5,4,0,1,2,9]];
@@ -497,7 +714,7 @@ DrawGraph.prototype = {
         return permutations;
     },
 
-    computePossibleLeafNodePermutations: function(maxInitOrderingBuckets)
+    computePossibleLeafNodePermutations: function(maxInitOrderingBuckets, leafSiblings)
     {
         // see computePossibleParentlessNodePermutations
 
@@ -507,6 +724,14 @@ DrawGraph.prototype = {
         // 2) split all nodes into at most maxInitOrderingBuckets buckets.
 
         var handled = {};
+        for (var p in leafSiblings) {
+            if (leafSiblings.hasOwnProperty(p)) {
+                var leaves = leafSiblings[p];
+                for (var i = 0; i < leaves.length; i++)
+                    handled[leaves[i]] = true;   // those nodes will be automatically added at correct ordering later
+            }
+        }
+
         var nextBucket = 0;
         for (var i = 0; i < this.GG.leafNodes.length; i++) {
             var v = this.GG.leafNodes[i];
@@ -547,31 +772,30 @@ DrawGraph.prototype = {
         // Now compute all possible permutations of the buckets
         permute2DArrayInFirstDimension( permutations, buckets, 0);
 
+        printObject(buckets);
         console.log("Found " + permutations.length + " permutations of leaf nodes");
 
         return permutations;
     },
 
-    init_order_top_to_bottom: function (parentlessNodes, rootlessPartners, useStack)
+    init_order_top_to_bottom: function (parentlessNodes, useStack)
     {
-        // initially orders the nodes in each rank. This may be done by a depth-first or breadth-f
-        // search starting with vertices of minimum rank. Vertices are assigned positions in their
-        // ranks in left-to-right order as the search progresses.
+        // initially orders the nodes in each rank by a depth-first or breadth-first
+        // searches starting with vertices of minimum rank. Vertices are assigned positions
+        // in their ranks in left-to-right order as the search progresses.
 
-        var order      = [];          // array of arrays - for each rank list of vertices in order
-        var vOrder     = [];          // array - for each v vOrder[v] = order within rank
+        var order  = [];          // array of arrays - for each rank list of vertices in order
+        var vOrder = [];          // array - for each v vOrder[v] = order within rank
 
-        for (var r = 0; r <= this.maxRank; r++) {
+        for (var r = 0; r <= this.maxRank; r++)
             order[r] = [];
-        }
 
-        for (var i = 0; i < this.GG.getNumVertices(); i++) {
+        for (var i = 0; i < this.GG.getNumVertices(); i++)
             vOrder[i] = undefined;
-        }
 
         // Use BFS -----------------------------
         var queue = useStack ? new Stack() : new Queue();
-        queue.pushAll(parentlessNodes);
+        queue.setTo(parentlessNodes);
 
         //console.log("Use stacK: " + useStack + ", parentless: " + stringifyObject(parentlessNodes));
 
@@ -593,81 +817,34 @@ DrawGraph.prototype = {
             //alreadyOrderedSortFunc = function(a,b){return b-a};
             //outEdges.sort(alreadyOrderedSortFunc);
 
-            for (var u = 0; u < outEdges.length; u++) {
+            for (var u = 0; u < outEdges.length; u++)
                 queue.push(outEdges[u]);
-            }
         }
         //--------------------------------------
 
-        var o = new Ordering();
-        o.init(order, vOrder);
-
+        //var o = new Ordering(order, vOrder);
         //printObject(o);
-
-        // place rootless partners in the best possible way
-        for (var p in rootlessPartners) {
-            if (rootlessPartners.hasOwnProperty(p)) {
-                // now check all rootless partners of p. Will place them next to p
-                // in the ordering, but need to count how many partners p already has on each side
-                // (to place rootless partners on that side to minimize edge crossings)
-                var partnersToTheLeft  = 0;
-                var partnersToTheRight = 0;
-                var pOrder             = o.vOrder[p];
-                var rank               = this.ranks[p];
-
-                var pRelationships = this.GG.getOutEdges(p);
-                for (var j = 0; j < pRelationships.length; j++) {
-                    if ( this.GG.isRelationship(pRelationships[j]) ) {   // ignore long edges
-                        var parents = this.GG.getInEdges(pRelationships[j]);
-                        var partner = (parents[0] == p) ? parents[1] : parents[0];
-                        if ( o.vOrder[partner] > pOrder )
-                            partnersToTheRight++;
-                        else
-                            partnersToTheLeft++;
-                    }
-                }
-
-                var rootless = rootlessPartners[p];
-                //console.log("p: " + p + ", rootless: " + stringifyObject(rootless) + ", rank: " + rank + ", order: " + pOrder);
-                for (var i = 0; i < rootless.length; i++) {
-                    var v = rootless[i];
-
-                    // so we have a v-p partnership. Place v next to p on the side which has less partners already
-                    if (partnersToTheRight < partnersToTheLeft) {
-                        partnersToTheRight++;
-                        o.insert(rank, pOrder+1, v);
-                    }
-                    else {
-                        partnersToTheLeft++;
-                        o.insert(rank, pOrder, v);
-                    }
-                }
-            }
-        }
-
-        //printObject(o);
-        return o;
+        //return o;
+        return new Ordering(order, vOrder);
     },
 
     init_order_bottom_to_top: function (leafNodes, useStack)
     {
-        // initially orders the nodes in each rank. This may be done by a depth-first or breadth-f
-        // search starting with vertices of minimum rank. Vertices are assigned positions in their
-        // ranks in left-to-right order as the search progresses.
+        // initially orders the nodes in each rank using depth-first or breadth-first
+        // searches starting with he leaf vertices. Vertices are assigned positions in
+        // their ranks in left-to-right order as the search progresses.
 
-        var order      = [];          // array of arrays - for each rank list of vertices in order
-        var vOrder     = [];          // array - for each v vOrder[v] = order within rank
+        var order  = [];          // array of arrays - for each rank list of vertices in order
+        var vOrder = [];          // array - for each v vOrder[v] = order within rank
 
-        for (var r = 0; r <= this.maxRank; r++) {
+        for (var r = 0; r <= this.maxRank; r++)
             order[r] = [];
-        }
 
-        for (var i = 0; i < this.GG.getNumVertices(); i++) {
+        for (var i = 0; i < this.GG.getNumVertices(); i++)
             vOrder[i] = undefined;
-        }
 
         var queue = useStack ? new Stack() : new Queue();
-        queue.pushAll(leafNodes);
+        queue.setTo(leafNodes);
 
         while ( queue.size() > 0 ) {
             var next = queue.pop();
@@ -684,15 +861,11 @@ DrawGraph.prototype = {
             // add all children to the queue
             var inEdges = this.GG.getInEdges(next);
 
-            for (var u = 0; u < inEdges.length; u++) {
+            for (var u = 0; u < inEdges.length; u++)
                 queue.push(inEdges[u]);
-            }
         }
 
-        var o = new Ordering();
-        o.init(order, vOrder);
-
-        return o;
+        return new Ordering(order, vOrder);
     },
 
     edge_length_score: function(order, onlyRank)
@@ -713,16 +886,17 @@ DrawGraph.prototype = {
             if (this.GG.isRelationship(i)) {
     		    var parents = this.GG.getInEdges(i);
 
-                // each "relationship" node is guaranteed to have exactly two "parent" nodes (validate() checks that)
+                if (parents.length == 2) {     // while each relationship has 2 parents, during ordering some parents may be "unplugged" to simplify the graph
 
-                // only if parents have the same rank
-                if ( this.ranks[parents[0]] != this.ranks[parents[1]] )
-    			    continue;
+                    // only if parents have the same rank
+                    if ( this.ranks[parents[0]] != this.ranks[parents[1]] )
+        			    continue;
 
-                var order1 = order.vOrder[parents[0]];
-                var order2 = order.vOrder[parents[1]];
+                    var order1 = order.vOrder[parents[0]];
+                    var order2 = order.vOrder[parents[1]];
 
-                totalEdgeLengthInPositions += Math.abs(order1 - order2);
+                    totalEdgeLengthInPositions += Math.abs(order1 - order2);
+                }
             }
 
             if (this.GG.isChildhub(i)) {
@@ -782,12 +956,14 @@ DrawGraph.prototype = {
                     // for each relationship node add the number of crossings equal to the number of
                     // nodes on the parent rank between it's parents according to current ordering
                     if ( !dontUseApproximationForRelationshipEdges && this.GG.isRelationship(targetV) ) {
-                        var parents  = this.GG.getInEdges(targetV);
-                        var order1    = order.vOrder[parents[0]];
-                        var order2    = order.vOrder[parents[1]];
-                        var crossings = this.numNodesWithParentsInBetween(order, r, order1, order2);
-                        numCrossings += crossings/2; // only assign it half a crossing because most will be fixed by transpose()
-                                                     // - and if "1" is assigned transpose wont fix certain local cases
+                        var parents = this.GG.getInEdges(targetV);
+                        if (parents.length == 2) {
+                            var order1    = order.vOrder[parents[0]];
+                            var order2    = order.vOrder[parents[1]];
+                            var crossings = this.numNodesWithParentsInBetween(order, r, order1, order2);
+                            numCrossings += crossings/2; // only assign it half a crossing because most will be fixed by transpose()
+                                                         // - and if "1" is assigned transpose wont fix certain local cases
+                        }
                     }
 
                     // so we have an edge v->targetV. Have to check how many edges
@@ -834,8 +1010,8 @@ DrawGraph.prototype = {
         for (var ord = orderV+1; ord < verticesAtRankV.length; ord++) {
             var vertex = verticesAtRankV[ord];
 
-            var outEdges  = this.GG.getOutEdges(vertex);
-            var len       = outEdges.length;
+            var outEdges = this.GG.getOutEdges(vertex);
+            var len      = outEdges.length;
 
             for (var j = 0; j < len; j++) {
                 var target = outEdges[j];
@@ -973,7 +1149,7 @@ DrawGraph.prototype = {
     },
     //-------------------------------------------------------------------------[wmedian]-
 
-    transpose: function(order, doMinorImprovements)
+    transpose: function(order, doMinorImprovements, stopIfMoreThanCrossings)
     {
         // for each rank: goes over all vertices in the rank and tries to switch orders of two
         //                adjacent vertices. If numCrossings is improved keeps the new order.
@@ -981,6 +1157,10 @@ DrawGraph.prototype = {
         var improved = true;
 
         //if (doMinorImprovements) printObject(order);
+
+        var totalEdgeCrossings = this.edge_crossing(order);
+        if (stopIfMoreThanCrossings && totalEdgeCrossings > stopIfMoreThanCrossings) return;
+        //console.log("Total crossings: " + totalEdgeCrossings);
 
         var iter = 0;
         while( improved )
@@ -993,13 +1173,21 @@ DrawGraph.prototype = {
             for (var r = 1; r <= this.maxRank; r++)
             {
                 var numEdgeCrossings = this.edge_crossing(order, r);
-                var edgeLengthScore  = doMinorImprovements ? this.edge_length_score(order,r) : 0;
+
+                if (!doMinorImprovements && numEdgeCrossings == 0) continue;
+
+                var edgeLengthScore = doMinorImprovements ? this.edge_length_score(order,r) : 0;
+
+                var rankImproved = false;
 
                 var maxIndex = order.order[r].length - 1;
                 for (var i = 0; i < maxIndex; i++) {
 
                     var v1 = order.order[r][i];
                     var v2 = order.order[r][i+1];
+
+                    //if (v1 == 12 && v2 == 20)
+                    //    console.log("trying: " + v1 + "  <-> " + v2);
 
                     order.exchange(r, i, i+1);
 
@@ -1020,17 +1208,25 @@ DrawGraph.prototype = {
                         (newEdgeCrossings == numEdgeCrossings && newLengthScore < edgeLengthScore) ) {
                         // this was a good exchange, apply it to the current real ordering
                         improved = true;
+                        rankImproved = true;
+                        var improvement = (numEdgeCrossings - newEdgeCrossings);
+                        totalEdgeCrossings -= improvement;
                         numEdgeCrossings = newEdgeCrossings;
                         edgeLengthScore  = newLengthScore;
-                        //if (doMinorImprovements)
                         //console.log("exchanged "+ v1 + " <-> " + v2);
-                        if (!doMinorImprovements && numEdgeCrossings == 0) return 0; // still want to optimize for edge lengths
+                        if (!doMinorImprovements) {
+                            if (totalEdgeCrossings == 0) return; // still want to optimize for edge lengths
+                            if (numEdgeCrossings == 0) break; // for this rank
+                        }
+
                     }
                     else {
                         // exchange back
                         order.exchange(r, i, i+1);
                     }
                 }
+
+                if (rankImproved) r--; // repeat again for the same rank
             }
         }
 
@@ -1110,6 +1306,7 @@ DrawGraph.prototype = {
                                 if (!newOrder.move(rank2, ord2, move2)) continue;
                                 if (!newOrder.move(rank3, ord3, move3)) continue;
 
+                                // TODO: performance: only count crossings caused by the long edge itself?
                                 var newCross = this.edge_crossing(newOrder, false, postReRanking);
                                 if (newCross < bestScore) {
                                     console.log("+");
@@ -1394,6 +1591,8 @@ DrawGraph.prototype = {
     {
         var verticalLevels = new VerticalLevels();
 
+        if (this.GG.v.length <= 1) return verticalLevels;
+
         // for each rank:
         // 1) if rank has childhub nodes:
         //    a) for each vertex on the rank, in the ordering order
@@ -1556,6 +1755,8 @@ DrawGraph.prototype = {
 
     displayGraph: function(xcoord, message)
     {
+        if (!this.displayDebug) return;
+
         var renderPackage = { convertedG: this.GG,
                               ranks:      this.ranks,
                               ordering:   this.order,
@@ -2091,7 +2292,7 @@ DrawGraph.prototype = {
 
 function draw_graph( internalG )
 {
-    var horizontalPersonSeparationDist = 8;  // same relative units as in intenalG.width fields. Distance between persons
+    var horizontalPersonSeparationDist = 10; // same relative units as in intenalG.width fields. Distance between persons
     var horizontalRelSeparationDist    = 6;  // same relative units as in intenalG.width fields. Distance between persons
 
     var orderingInitBuckets = 5;             // default: 5. It may take up to ~factorial_of_this_number iterations. See ordering()
@@ -2107,7 +2308,8 @@ function draw_graph( internalG )
                                    horizontalRelSeparationDist,
                                    orderingInitBuckets,
                                    orderingIterations,
-                                   xcoordIterations );
+                                   xcoordIterations,
+                                   true );  // display debug
 
     console.log( "=== Running time: " + timer.report() + "ms ==========" );
 
