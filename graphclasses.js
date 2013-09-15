@@ -22,11 +22,11 @@ InternalGraph = function(defaultPersonNodeWidth, defaultNonPersonNodeWidth)
     this.leafNodes       = [];
 
     this.vWidth = [];
-    this.defaultNonPersonNodeWidth = defaultPersonNodeWidth    ? defaultPersonNodeWidth    : 1;
-    this.defaultPersonNodeWidth    = defaultNonPersonNodeWidth ? defaultNonPersonNodeWidth : 1;
+    this.defaultPersonNodeWidth    = defaultPersonNodeWidth    ? defaultPersonNodeWidth    : 1;
+    this.defaultNonPersonNodeWidth = defaultNonPersonNodeWidth ? defaultNonPersonNodeWidth : 1;
 
     this.type       = [];      // for each V node type (see TYPE)
-    this.properties = [];      // for each V a set of type-specific properties {"sex": "m"/"f"/"u", etc.}
+    this.properties = [];      // for each V a set of type-specific properties {"gender": "M"/"F"/"U", etc.}
 };
 
 
@@ -36,8 +36,8 @@ InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, de
 
     var newG = new InternalGraph();
 
-    if (defaultPersonNodeWidth)    newG.defaultNonPersonNodeWidth = defaultNonPersonNodeWidth;
-    if (defaultNonPersonNodeWidth) newG.defaultPersonNodeWidth    = defaultPersonNodeWidth;
+    if (defaultNonPersonNodeWidth) newG.defaultNonPersonNodeWidth = defaultNonPersonNodeWidth;
+    if (defaultPersonNodeWidth)    newG.defaultPersonNodeWidth    = defaultPersonNodeWidth;
 
     var relationshipHasExplicitChHub = {};
 
@@ -63,15 +63,15 @@ InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, de
             properties = inputG[v].hasOwnProperty('properties') ? inputG[v]["properties"] : inputG[v]["prop"];
 
         if ( type == TYPE.PERSON ) {
-            if (!properties.hasOwnProperty("sex"))
-                properties["sex"] = "u";
+            if (!properties.hasOwnProperty("gender"))
+                properties["gender"] = "U";
 
-            if (inputG[v].hasOwnProperty("sex")) {
-                 var sexString = inputG[v]["sex"].toLowerCase();
-                 if( sexString == "female" || sexString == "fem" || sexString == "f")
-                    properties["sex"] = "f";
-                else if( sexString == "male" || sexString == "m")
-                    properties["sex"] = "m";
+            if (inputG[v].hasOwnProperty("gender")) {
+                 var genderString = inputG[v]["gender"].toLowerCase();
+                 if( genderString == "female" || genderString == "fem" || genderString == "f")
+                    properties["gender"] = "F";
+                else if( genderString == "male" || genderString == "m")
+                    properties["gender"] = "U";
             }
         }
 
@@ -84,7 +84,7 @@ InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, de
         // should only be used for save/restore: to verify the new IDs match the old ones
         if (checkIDs) {
             if (!inputG[v].hasOwnProperty('id'))
-                throw "Can't chekc IDs - no IDs in input data!";
+                throw "Can't check IDs - no IDs in input data!";
             var expectID = inputG[v]['id'];
             if (expectID != newID)
                 throw "Assertion failed: restored node ID (" + newID.toString() + ") does not match real node ID (" + expectID.toString() + ")!";
@@ -357,8 +357,8 @@ InternalGraph.prototype = {
 
         var width = (type == TYPE.PERSON) ? this.defaultPersonNodeWidth : this.defaultNonPersonNodeWidth;
 
-        if (type == TYPE.PERSON && !properties.hasOwnProperty("sex"))
-            properties["sex"] = "u";
+        if (type == TYPE.PERSON && !properties.hasOwnProperty("gender"))
+            properties["gender"] = "u";
 
         var newNodeId = this._addVertex(vname, undefined, type, properties, width);
 
@@ -869,6 +869,19 @@ function shuffleArray (array) {
     return array;
 }
 */
+
+function arrayContains(array, item){
+    if (Array.prototype.indexOf) {
+        return !(array.indexOf(item) < 0);
+    }
+    else {
+        for (var i = 0; i < array.length; i++) {
+            if (array[i] === item)
+                return true;
+        }
+        return false;
+    }
+}
 
 function removeFirstOccurrenceByValue(array, item){
     for(var i in array){
