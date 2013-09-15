@@ -206,6 +206,14 @@ VerticalLevels = function() {
                                       // (where levelID is for levels between this and previous ranks)
 };
 
-/*VerticalLevels.prototype = {
-};*/
+VerticalLevels.prototype = {
+    copy: function() {
+        var result = new VerticalLevels();
+
+        result.rankVerticalLevels   = this.rankVerticalLevels.slice(0);
+        result.childEdgeLevel       = this.childEdgeLevel.slice(0);
+        result.outEdgeVerticalLevel = this.outEdgeVerticalLevel.slice(0);
+        return result;
+    }
+};
 
