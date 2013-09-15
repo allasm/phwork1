@@ -23,37 +23,43 @@
             //            TODO: add a check that all relationship nodes are on the same level with parents
 
             var inputG = [
-                { name :'f11', outedges: [ {to: 'p1'} ], sex: "female" },
-                { name :'m11', outedges: [ {to: 'p1'} ], sex: "male" },
+                { name :'f11', outedges: [ {to: 'p1'} ], gender: "female" },
+                { name :'m11', outedges: [ {to: 'p1'} ], gender: "male" },
                 { name :'p1', outedges: [ {to: 'ch1'},{to: 'ch2'},{to: 'ch3'} ], relationship: true },
-                { name :'f13', outedges: [ {to: 'p3'} ], sex: "female" },
-                { name :'m13', outedges: [ {to: 'p3'} ], sex: "male" },
+                { name :'f13', outedges: [ {to: 'p3'} ], gender: "female" },
+                { name :'m13', outedges: [ {to: 'p3'} ], gender: "male" },
                 { name :'p3', outedges: [ {to: 'ch7'},{to: 'ch8'},{to: 'ch9'} ], relationship: true },
-                { name :'f12', outedges: [ {to: 'p2'} ], sex: "female" },
-                { name :'m12', outedges: [ {to: 'p2'} ], sex: "male" },
+                { name :'f12', outedges: [ {to: 'p2'} ], gender: "female" },
+                { name :'m12', outedges: [ {to: 'p2'} ], gender: "male" },
                 { name :'p2', outedges: [ {to: 'ch4'},{to: 'ch5'},{to: 'ch6'} ], relationship: true },
-                { name :'ch2', outedges: [ {to: 'p4'} ], sex: "female" },
-                { name :'ch5', outedges: [ {to: 'p4'} ], sex: "male" },
+                { name :'ch2', outedges: [ {to: 'p4'} ], gender: "female" },
+                { name :'ch5', outedges: [ {to: 'p4'} ], gender: "male" },
                 { name :'p4', outedges: [ {to: 'leaf1'} ], relationship: true },
-                { name :'ch4', outedges: [ {to: 'p5'} ], sex: "female" },
-                { name :'ch9', outedges: [ {to: 'p5'} ], sex: "male" },
+                { name :'ch4', outedges: [ {to: 'p5'} ], gender: "female" },
+                { name :'ch9', outedges: [ {to: 'p5'} ], gender: "male" },
                 { name :'p5', outedges: [ {to: 'leaf2'} ], relationship: true },
-                { name :'ch1', sex: "male" },
-                { name :'ch3', sex: "male" },
-                { name :'ch6', sex: "male" },
-                { name :'ch7', sex: "male" },
-                { name :'ch8', sex: "male" },
-                { name :'leaf1', sex: "male" },
-                { name :'leaf2', sex: "male" }
+                { name :'ch1', gender: "male" },
+                { name :'ch3', gender: "male" },
+                { name :'ch6', gender: "male" },
+                { name :'ch7', gender: "male" },
+                { name :'ch8', gender: "male" },
+                { name :'leaf1', gender: "male" },
+                { name :'leaf2', gender: "male" }
             ];
 
             var G = InternalGraph.init_from_user_graph(inputG, 10, 2);
 
-            display_raw_graph(G, 'input');
+            //display_raw_graph(G, 'input');
 
-            processedGraph = draw_graph(G);
+            //processedGraph = draw_graph(G);
+
+            processedGraph = draw_graph(new InternalGraph(10,2));
+
+            processedGraph.fromJSON('{"GG":[{"name":"f11","id":0,"prop":{"gender":"f"},"outedges":[{"to":"p1"},{"to":"_rel27"}]},{"name":"m11","id":1,"prop":{"gender":"m"},"outedges":[{"to":"p1"}]},{"name":"p1","id":2,"rel":true,"hub":true,"prop":{},"outedges":[{"to":"chhub_p1"}]},{"name":"chhub_p1","id":3,"chhub":true,"prop":null,"outedges":[{"to":"ch1"},{"to":"ch2"},{"to":"ch3"}]},{"name":"f13","id":4,"prop":{"gender":"f"},"outedges":[{"to":"p3"}]},{"name":"m13","id":5,"prop":{"gender":"m"},"outedges":[{"to":"p3"}]},{"name":"p3","id":6,"rel":true,"hub":true,"prop":{},"outedges":[{"to":"chhub_p3"}]},{"name":"chhub_p3","id":7,"chhub":true,"prop":null,"outedges":[{"to":"ch7"},{"to":"ch8"},{"to":"ch9"}]},{"name":"f12","id":8,"prop":{"gender":"f"},"outedges":[{"to":"p2"}]},{"name":"m12","id":9,"prop":{"gender":"m"},"outedges":[{"to":"p2"}]},{"name":"p2","id":10,"rel":true,"hub":true,"prop":{},"outedges":[{"to":"chhub_p2"}]},{"name":"chhub_p2","id":11,"chhub":true,"prop":null,"outedges":[{"to":"ch4"},{"to":"ch5"},{"to":"ch6"}]},{"name":"ch2","id":12,"prop":{"gender":"f"},"outedges":[{"to":"p4"}]},{"name":"ch5","id":13,"prop":{"gender":"m"},"outedges":[{"to":"p4"}]},{"name":"p4","id":14,"rel":true,"hub":true,"prop":{},"outedges":[{"to":"chhub_p4"}]},{"name":"chhub_p4","id":15,"chhub":true,"prop":null,"outedges":[{"to":"leaf1"}]},{"name":"ch4","id":16,"prop":{"gender":"f"},"outedges":[{"to":"p5"}]},{"name":"ch9","id":17,"prop":{"gender":"m"},"outedges":[{"to":"p5"}]},{"name":"p5","id":18,"rel":true,"hub":true,"prop":{},"outedges":[{"to":"chhub_p5"}]},{"name":"chhub_p5","id":19,"chhub":true,"prop":null,"outedges":[{"to":"leaf2"}]},{"name":"ch1","id":20,"prop":{"gender":"m"}},{"name":"ch3","id":21,"prop":{"gender":"m"}},{"name":"ch6","id":22,"prop":{"gender":"m"}},{"name":"ch7","id":23,"prop":{"gender":"m"}},{"name":"ch8","id":24,"prop":{"gender":"m"}},{"name":"leaf1","id":25,"prop":{"gender":"m"}},{"name":"leaf2","id":26,"prop":{"gender":"m"}},{"name":"_rel27","id":27,"rel":true,"hub":true,"prop":{},"outedges":[{"to":"_chhub29"}]},{"name":"_28","id":28,"prop":{"gender":"u"},"outedges":[{"to":"_rel27"},{"to":"_rel31"}]},{"name":"_chhub29","id":29,"chhub":true,"prop":{},"outedges":[{"to":"_30"}]},{"name":"_30","id":30,"prop":{"gender":"u"}},{"name":"_rel31","id":31,"rel":true,"hub":true,"prop":{},"outedges":[{"to":"_chhub33"}]},{"name":"_32","id":32,"prop":{"gender":"u"},"outedges":[{"to":"_rel31"},{"to":"_rel35"}]},{"name":"_chhub33","id":33,"chhub":true,"prop":{},"outedges":[{"to":"_34"}]},{"name":"_34","id":34,"prop":{"gender":"u"}},{"name":"_rel35","id":35,"rel":true,"hub":true,"prop":{},"outedges":[{"to":"_chhub37"}]},{"name":"_36","id":36,"prop":{"gender":"u"},"outedges":[{"to":"_rel35"}]},{"name":"_chhub37","id":37,"chhub":true,"prop":{},"outedges":[{"to":"_38"}]},{"name":"_38","id":38,"prop":{"gender":"u"}}],"ranks":[1,1,1,2,1,1,1,2,1,1,1,2,3,3,3,4,3,3,3,4,3,3,3,3,3,5,5,1,1,2,3,1,1,2,3,1,1,2,3],"order":[[],[36,35,32,31,28,27,0,2,1,8,10,9,4,6,5],[37,33,29,3,11,7],[38,34,30,21,20,12,14,13,22,16,18,17,24,23],[15,19],[25,26]],"positions":[77,101,89,89,205,229,217,217,141,165,153,153,109,133,121,121,173,197,185,185,89,69,153,237,217,121,185,65,53,65,49,41,29,41,29,17,5,17,9]}');
 
             display_controls('processedGraph', 'control', 'output');
+
+            processedGraph.DG.displayGraph(processedGraph.DG.positions, "zz");
 
             display_processed_graph(processedGraph, 'output');
         }
