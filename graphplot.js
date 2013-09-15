@@ -15,7 +15,9 @@ DrawGraph = function( internalG,
     this.order     = undefined;  // class: Ordering
 
     this.positions = undefined;  // 1D array: index = vertex id, value = x-coordinate
+
     this.vertLevel = undefined;  // class: VerticalLevels
+    this.rankY     = undefined;  // 1D aray: index = rank, value = y-coordinate
 
     this.ancestors = undefined;  // {}: for each node contains a set of all its ancestors and the closest relationship distance
     this.consangr  = undefined;  // {}: for each node a set of consanguineous relationship IDs
@@ -31,8 +33,10 @@ DrawGraph.prototype = {
     maxXcoordIterations:    4,
     xCoordEdgeWeightValue:  true,        // when optimizing edge length/curvature take
                                          // edge weight into account or not
-    horizontalPersonSeparationDist: 8,
+    horizontalPersonSeparationDist: 10,
     horizontalRelSeparationDist:    6,
+    yLevelSize:                     36,
+    yExtraPerHorizontalLevel:       8,
 
     displayDebug: false,
 
@@ -100,6 +104,7 @@ DrawGraph.prototype = {
         // 4)
 
         this.vertLevel = this.positionVertically();
+        this.rankY     = this.computeRankY();
 
         timer.printSinceLast("=== Vertical spacing runtime: ");
     },
@@ -1487,7 +1492,7 @@ DrawGraph.prototype = {
         // depending on what kinds of edges are crossing.
         // Until re-ordering is done it is computationally harder to make these tests,
         // but once reordering is complete it is easy
-        // (e.g: testcase 3A, relationship with both a parent and paren'ts child)
+        // (e.g: testcase 3A, relationship with both a parent and parent's child)
         this.improveOrdering();
 
         // after re-ordering long edges are shorter, try to improve long edge placement again
@@ -1578,6 +1583,24 @@ DrawGraph.prototype = {
                     }
                 }
             }
+        }
+
+        // set ancestors for partnership nodes as well - equal to combined ancestors on both parents
+        // (just for convenience/unification when used by the graphical interface)
+        for (var v = 0; v <= this.GG.maxRealVertexId; v++) {
+            if (!this.GG.isRelationship(v)) continue;
+            var parents = this.GG.getInEdges(v);
+
+            ancestors[v] = ancestors[parents[0]];
+
+            for (var a in ancestors[parents[1]])
+                if (ancestors[parents[1]].hasOwnProperty(a)) {
+                    var ancestoryLength = ancestors[parents[1]][a];
+                    if (!ancestors[v].hasOwnProperty(a))
+                        ancestors[v][a] = ancestoryLength;
+                    else
+                        ancestors[v][a] = Math.min(ancestoryLength, ancestors[v][a]);
+                }
         }
 
         //printObject(ancestors);
@@ -1712,8 +1735,8 @@ DrawGraph.prototype = {
                     // shift all affected nodes AND all nodes that they affect etc
                     var shiftAmount = (useLevel+1) - maxShiftRank;
 
-                    //console.log("------- Processing: " + v);
-                    //printObject(shiftBelowNodes);
+                    console.log("------- Processing: " + v);
+                    printObject(shiftBelowNodes);
                     //console.log("Shift amount: " + shiftAmount);
 
                     var doneProcessing = {};
@@ -1748,6 +1771,25 @@ DrawGraph.prototype = {
         // TODO
 
         return verticalLevels;
+    },
+
+    computeRankY: function()
+    {
+        var rankY = [0, 0];  // rank 0 is virtual, rank 1 starts at relative 0
+
+        for ( var r = 2; r <= this.maxRank; r++ ) {
+            // note: yExtraPerHorizontalLevel * vertLevel.rankVerticalLevels[r] part comes from the idea that if there are many
+            //       horizontal lines (childlines & relationship lines) between two ranks it is good to separate those ranks vertically
+            //       more than ranks with less horizontal lines between them
+            rankY[r] = rankY[r-1] + this.yLevelSize + this.yExtraPerHorizontalLevel*(Math.max(this.vertLevel.rankVerticalLevels[r-1],2) - 2);
+        }
+
+        return rankY;
+    },
+
+    computeNodeY: function( rank, level )
+    {
+        return this.rankY[rank] + (level - 1)*this.yExtraPerHorizontalLevel;
     },
     //========================================[vertical separation for horizontal edges]=
 
