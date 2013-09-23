@@ -11,12 +11,9 @@ InternalGraph = function(defaultPersonNodeWidth, defaultNonPersonNodeWidth)
     this.v        = [];        // for each V lists (as unordered arrays of ids) vertices connected from V
     this.inedges  = [];        // for each V lists (as unordered arrays of ids) vertices connecting to V
 
+    this.maxRealVertexId = -1; // used for separation of real vertices from virtual-multi-rank-edge-breaking ones (kept for performance)
+
     this.weights  = [];        // for each V contains outgoing edge weights as {target1: weight1, t2: w2}
-
-    this.maxRealVertexId = 0;  // used for quick separation of real vertices from virtual-multi-rank-edge-breaking ones
-
-    this.idToName = [];
-    this.nameToId = {};
 
     this.parentlessNodes = [];
     this.leafNodes       = [];
@@ -36,6 +33,8 @@ InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, de
 
     var newG = new InternalGraph();
 
+    var nameToId = {};
+
     if (defaultNonPersonNodeWidth) newG.defaultNonPersonNodeWidth = defaultNonPersonNodeWidth;
     if (defaultPersonNodeWidth)    newG.defaultPersonNodeWidth    = defaultPersonNodeWidth;
 
@@ -43,6 +42,9 @@ InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, de
 
     // first pass: add all vertices and assign vertex IDs
     for (var v = 0; v < inputG.length; v++) {
+
+        if (!inputG[v].hasOwnProperty("name") && !inputG[v].hasOwnProperty("id"))
+            throw "Invalid inpiut: a node without id and without name";
 
         var type = TYPE.PERSON;
         if ( inputG[v].hasOwnProperty('relationship') || inputG[v].hasOwnProperty('rel') ) {
@@ -71,7 +73,7 @@ InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, de
                  if( genderString == "female" || genderString == "fem" || genderString == "f")
                     properties["gender"] = "F";
                 else if( genderString == "male" || genderString == "m")
-                    properties["gender"] = "U";
+                    properties["gender"] = "M";
             }
         }
 
@@ -79,7 +81,15 @@ InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, de
                     inputG[v].width :
                     (type == TYPE.PERSON ? defaultPersonNodeWidth : defaultNonPersonNodeWidth);
 
-        var newID = newG._addVertex( inputG[v].name, null, type, properties, width );   // "null" since id is not known yet
+        var newID = newG._addVertex( null, type, properties, width );   // "null" since id is not known yet
+
+        if (inputG[v].hasOwnProperty("name")) {  // note: this means using user input (not produced by this.serialize)
+            if (nameToId[inputG[v].name])
+                throw "Invalid user input: multiple nodes with the same name";
+            if (type == TYPE.PERSON)
+                newG.properties[newID]["fName"] = inputG[v].name;
+            nameToId[inputG[v].name] = newID;
+        }
 
         // should only be used for save/restore: to verify the new IDs match the old ones
         if (checkIDs) {
@@ -93,22 +103,24 @@ InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, de
         // when entered by user manually allow users to skip childhub nodes (and create them automatically)
         // (but when saving/restoring from a JSON need to save/restore childhub nodes as they
         //  may have some properties assigned by the user which we need to save/restore)
-        if ( type == TYPE.RELATIONSHIP && !relationshipHasExplicitChHub.hasOwnProperty(v) )
-            newG._addVertex( "chhub_" + inputG[v].name, null, TYPE.CHILDHUB, null, width );
+        if ( type == TYPE.RELATIONSHIP && !relationshipHasExplicitChHub.hasOwnProperty(v) ) {
+            var chHubId = newG._addVertex(null, TYPE.CHILDHUB, null, width );
+            nameToId["_chhub_" + newID] = chHubId;
+        }
     }
 
     // second pass (once all vertex IDs are known): process edges
     for (var v = 0; v < inputG.length; v++) {
         var nextV = inputG[v];
 
-        var vID    = newG.getVertexIdByName( nextV.name );
+        var vID    = nextV.id ? nextV.id : nameToId[nextV.name];
         var origID = vID;
 
         var substitutedID = false;
 
         if (newG.type[vID] == TYPE.RELATIONSHIP && !relationshipHasExplicitChHub.hasOwnProperty(vID)) {
             // replace edges from rel node by edges from childhub node
-            var childhubID = newG.getVertexIdByName( "chhub_" + nextV.name );
+            var childhubID = nameToId["_chhub_" + vID];
             vID = childhubID;
             substitutedID = true;
         }
@@ -117,15 +129,17 @@ InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, de
 
         if (nextV.outedges) {
             for (var outE = 0; outE < nextV.outedges.length; outE++) {
-                var targetName = nextV.outedges[outE].to;
-                var weight     = 1;
+                var target   = nextV.outedges[outE].to;
+                var targetID = nameToId[target] ? nameToId[target] : target;  // can specify target either by name or ID
+
+                if (!isInt(target) || !newG.isValidId(targetID))
+                    throw "Invalid input: invalid edge target (" + target + ")";
+
+                var weight = 1;
                 if (nextV.outedges[outE].hasOwnProperty('weight'))
                     weight = nextV.outedges[outE].weight;
-
                 if ( weight > maxChildEdgeWeight )
                     maxChildEdgeWeight = weight;
-
-                var targetID = newG.getVertexIdByName( targetName );
 
                 newG._addEdge( vID, targetID, weight );
             }
@@ -152,8 +166,8 @@ InternalGraph.prototype = {
 
         for (var v = 0; v < this.v.length; v++) {
             var data = {};
-            data["name"] = this.idToName[v];
-            data["id"]   = v;
+
+            data["id"] = v;
 
             if (saveWidth) // may not want this for compactness of output when all width are equal to default
                 data["width"] = this.vWidth[v];
@@ -175,8 +189,14 @@ InternalGraph.prototype = {
 
             out = [];
             var outEdges = this.getOutEdges(v);
-            for (var i = 0; i < outEdges.length; i++)
-                out.push({"to": this.idToName[outEdges[i]]});
+            for (var i = 0; i < outEdges.length; i++) {
+                var to     = outEdges[i];
+                var weight = this.getEdgeWeight(v, to);
+                if (weight == 1)
+                    out.push({"to": outEdges[i]});
+                else
+                    out.push({"to": outEdges[i], "weight": weight});
+            }
 
             if (out.length > 0)
                 data["outedges"] = out;
@@ -196,15 +216,15 @@ InternalGraph.prototype = {
     //
     // Note: ranks is modified to contain ranks of virtual nodes as well
 
-    makeGWithSplitMultiRankEdges: function (ranks, maxRank, doNotValidate) {
+    makeGWithSplitMultiRankEdges: function (ranks, maxRank, doNotValidate, addOneMoreOnTheSameRank) {
         var newG = new InternalGraph();
 
         newG.defaultNonPersonNodeWidth = this.defaultNonPersonNodeWidth;
         newG.defaultPersonNodeWidth    = this.defaultPersonNodeWidth;
 
         // add all original vertices
-        for (var i = 0; i < this.idToName.length; i++) {
-            newG._addVertex( this.idToName[i], i, this.type[i], this.properties[i], this.vWidth[i] );
+        for (var i = 0; i < this.v.length; i++) {
+            newG._addVertex( i, this.type[i], this.properties[i], this.vWidth[i] );
         }
 
         // go over all original edges:
@@ -228,13 +248,12 @@ InternalGraph.prototype = {
                     newG._addEdge( sourceV, targetV, weight );
                 }
                 else {
-                    var sourceName = this.getVertexNameById(sourceV);
-                    var targetName = this.getVertexNameById(targetV);
-
                     // create virtual vertices & edges
                     var prevV = sourceV;
-                    for (var midRank = sourceRank+1; midRank < targetRank; midRank++) {
-                        var nextV = newG._addVertex( sourceName + '->' + targetName + '_' + (midRank-sourceRank-1), null, TYPE.VIRTUALEDGE, null, this.defaultNonPersonNodeWidth);
+                    var lastVirtualRank = addOneMoreOnTheSameRank ? targetRank : targetRank - 1;
+
+                    for (var midRank = sourceRank+1; midRank <= lastVirtualRank; midRank++) {
+                        var nextV = newG._addVertex( null, TYPE.VIRTUALEDGE, {"fName": "_" + sourceV + '->' + targetV + '_' + (midRank-sourceRank-1)}, this.defaultNonPersonNodeWidth);
                         ranks[nextV] = midRank;
                         newG._addEdge( prevV, nextV, weight );
                         prevV = nextV;
@@ -262,7 +281,7 @@ InternalGraph.prototype = {
 
         // add all original vertices
         for (var i = 0; i <= this.maxRealVertexId; i++) {
-            newG._addVertex( this.idToName[i], i, this.type[i], this.properties[i], this.vWidth[i] );
+            newG._addVertex( i, this.type[i], this.properties[i], this.vWidth[i] );
         }
 
         // go over all original edges:
@@ -276,7 +295,7 @@ InternalGraph.prototype = {
                 var weight = this.getEdgeWeight(sourceV, targetV);
 
                 while (targetV > this.maxRealVertexId)
-                    tragetV = this.getOutEdges(targetV)[0];
+                    targetV = this.getOutEdges(targetV)[0];
 
                 newG._addEdge( sourceV, targetV, weight );
             }
@@ -297,7 +316,7 @@ InternalGraph.prototype = {
         this.leafNodes       = [];
 
         // find all vertices without an in-edge
-        for (var vid = 0; vid < this.v.length; vid++) {
+        for (var vid = 0; vid <= this.maxRealVertexId; vid++) {
             if ( this.getInEdges(vid).length == 0 ) {
                 this.parentlessNodes.push(vid);
             }
@@ -308,10 +327,10 @@ InternalGraph.prototype = {
         }
     },
 
-    // id: optional. If not given next available is used.
-    _addVertex: function(name, id, type, properties, width) {
-        if (name != "" && this.nameToId.hasOwnProperty(name)) throw "addVertex: [" + name + "] is already in G";
-        if (id && this.idToName[id]) throw "addVertex: vertex with id=" + id + " is already in G";
+    // id: optional. If not specified then next available is used.
+    // note: unlike insertVetex() does not do any id shifting and should be used only for initialization of the graph
+    _addVertex: function(id, type, properties, width) {
+        if (id && this.v[id]) throw "addVertex: vertex with id=" + id + " is already in G";
 
         var nextId = (id == null) ? this.v.length : id;
 
@@ -320,11 +339,6 @@ InternalGraph.prototype = {
         this.inedges[nextId] = [];
 
         this.weights[nextId] = {};
-
-        this.idToName[nextId] = name;
-
-        if (name != "")
-            this.nameToId[name] = nextId;
 
         this.vWidth[nextId] = width;
 
@@ -339,6 +353,8 @@ InternalGraph.prototype = {
     },
 
     _addEdge: function(fromV, toV, weight) {
+        // adds an edge, but does not update all the internal structures for performance reasons.
+        // shoudl be used for bulk updates where it makes sense to do one maintenance run for all the nodes
         if (this.v.length < Math.max(fromV, toV))
             throw "addEdge: vertex ID=" + Math.max(fromV, toV) + "] is not in G";
 
@@ -351,16 +367,35 @@ InternalGraph.prototype = {
         this.weights[fromV][toV] = weight;
     },
 
-    insertVertex: function(vname, type, properties, edgeWeights, inedges, outedges) {
-        if (this.v.length != this.maxRealVertexId + 1)
-            throw "Assertion failed: insertVertex() only works for graphs with no virtual edges";   // easier to insert into base graph and recompute virtual than to shift all virtual IDs
+    addEdge: function(fromV, toV, weight) {
+            // same as _addEdge, but also updates leaf/parentless nodes
+            this._addEdge(fromV, toV, weight);
+            this._updateLeafAndParentlessNodes();
+    },
 
+    insertVertex: function(type, properties, edgeWeights, inedges, outedges) {
         var width = (type == TYPE.PERSON) ? this.defaultPersonNodeWidth : this.defaultNonPersonNodeWidth;
 
         if (type == TYPE.PERSON && !properties.hasOwnProperty("gender"))
-            properties["gender"] = "u";
+            properties["gender"] = "U";
 
-        var newNodeId = this._addVertex(vname, undefined, type, properties, width);
+        var newNodeId = this.maxRealVertexId + 1;    // all real node IDs should be <= maxRealVertexId, so have to insert new node here
+
+        // shift all IDs greater or equal to newNodeId up by one (can only hapen when virtual nodes are present)
+        if (this.v.length >= newNodeId) {
+            // as all existing IDs >= v are increased by one, and all references should be updated
+            var test         = function(u) { return (u >= newNodeId); }
+            var modification = function(u) { return u + 1; }
+            this._updateAllReferencesToNewIDs( test, modification );
+        }
+
+        this.v         .splice(newNodeId,0,[]);
+        this.inedges   .splice(newNodeId,0,[]);
+        this.weights   .splice(newNodeId,0,{});
+        this.vWidth    .splice(newNodeId,0,width);
+        this.type      .splice(newNodeId,0,type);
+        this.properties.splice(newNodeId,0,properties);
+        this.maxRealVertexId++;
 
         // add new edges
         for (var i = 0; i < inedges.length; i++)
@@ -383,20 +418,77 @@ InternalGraph.prototype = {
         var child  = this.v[v][0];
 
         // replace outgoing edge for parent from V to child
-        var idx1 = this.v[parent].indexOf(v);
-        this.v[parent][idx1] = child;
-        // replace incoming edge for child from V to parent
-        var idx2 = this.inedges[child].indexOf(v);
-        this.inedges[child][idx2] = parent;
-
+        replaceInArray(this.v[parent], v, child);
         this.weights[parent][child] = this.weights[parent][v];
+        delete this.weights[parent][v];
+
+        // replace incoming edge for child from V to parent
+        replaceInArray(this.inedges[child], v, parent);
 
         this.v[v] = [];
         this.inedges[v] = [];
         this.weights[v] = {};
     },
 
+    remove: function(v) {
+        for (var i = 0; i < this.v[v].length; i++) {
+            var target = this.v[v][i];
+            removeFirstOccurrenceByValue(this.inedges[target], v);
+        }
+        for (var i = 0; i < this.inedges[v].length; i++) {
+            var incoming = this.inedges[v][i];
+            removeFirstOccurrenceByValue(this.v[incoming], v);
+            delete this.weights[incoming][v];
+        }
+
+        //console.log("V before: " + stringifyObject(this.v));
+        this.v.splice(v,1);
+        //console.log("V after: " + stringifyObject(this.v));
+        this.inedges.splice(v,1);
+        this.weights.splice(v,1);
+        this.vWidth.splice(v,1);
+        this.type.splice(v,1);
+        this.properties.splice(v,1);
+        if (v <= this.maxRealVertexId)
+            this.maxRealVertexId--;
+
+        // as all IDs above v are decreased by one, and all references should be updated
+        var test         = function(u) { return (u > v); }
+        var modification = function(u) { return u - 1; }
+        this._updateAllReferencesToNewIDs( test, modification );
+
+        this._updateLeafAndParentlessNodes();
+    },
+
+    _updateAllReferencesToNewIDs: function ( test, modification ) {
+        // updates all references (e.g. out- and in- edge targets, etc.) pointing to
+        // ids passing the test() according to modification()
+        // decrease all IDs above v by one in all the arrays (v, inedges, weights)
+
+        for (var i = 0; i < this.v.length; i++) {
+            for (var j = 0; j < this.v[i].length; j++)
+                if ( test(this.v[i][j]) )
+                    this.v[i][j] = modification(this.v[i][j]);
+            for (var j = 0; j < this.inedges[i].length; j++)
+                if ( test(this.inedges[i][j]) )
+                    this.inedges[i][j] = modification(this.inedges[i][j]);
+
+            var newWeights = {};
+            var weights = this.weights[i];
+            for (u in weights) {
+                if (weights.hasOwnProperty(u))
+                    if (test(u))
+                        newWeights[modification(u)] = weights[u];
+                    else
+                        newWeights[u] = weights[u];
+            }
+            this.weights[i] = newWeights;
+        }
+    },
+
     validate: function() {
+        console.log("THIS: " + stringifyObject(this));
+
         if( this.v.length == 0 ) return;
 
         for (var v = 0; v < this.v.length; v++) {
@@ -405,21 +497,21 @@ InternalGraph.prototype = {
 
             if (this.isPerson(v)) {
                 if (inEdges.length > 1)
-                    throw "Assertion failed: person nodes can't have two in-edges as people are produced by a single pregnancy (failed for " + this.getVertexNameById(v) + ")";
+                    throw "Assertion failed: person nodes can't have two in-edges as people are produced by a single pregnancy (failed for " + this.getVertexDescription(v) + ")";
                 for (var i = 0; i < outEdges.length; i++)
                     if (!this.isRelationship(outEdges[i]) && !this.isVirtual(outEdges[i]) )
-                        throw "Assertion failed: person nodes have only out edges to relationships (failed for " + this.getVertexNameById(v) + ")";
+                        throw "Assertion failed: person nodes have only out edges to relationships (failed for " + this.getVertexDescription(v) + ")";
             }
             else if (this.isRelationship(v)) {
                 // TODO: for childless relations this is not true!
                 if (outEdges.length == 0)
-                    throw "Assertion failed: all relationships should have a childhub associated with them (failed for " + this.getVertexNameById(v) + ")";
+                    throw "Assertion failed: all relationships should have a childhub associated with them (failed for " + this.getVertexDescription(v) + ")";
                 if (outEdges.length > 1)
-                    throw "Assertion failed: all relationships should have only one outedge (to a childhub) (failed for " + this.getVertexNameById(v) + ")";
+                    throw "Assertion failed: all relationships should have only one outedge (to a childhub) (failed for " + this.getVertexDescription(v) + ")";
                 if (!this.isChildhub(outEdges[0]))
-                    throw "Assertion failed: relationships should only have out edges to childhubs (failed for " + this.getVertexNameById(v) + ")";
+                    throw "Assertion failed: relationships should only have out edges to childhubs (failed for " + this.getVertexDescription(v) + ")";
                 if (inEdges.length != 2)
-                    throw "Assertion failed: relationships should always have exactly two associated persons (failed for " + this.getVertexNameById(v) + ")";
+                    throw "Assertion failed: relationships should always have exactly two associated persons (failed for " + this.getVertexDescription(v) + ")";
             }
             else if (this.isVirtual(v)) {
                 if (outEdges.length != 1)
@@ -434,7 +526,7 @@ InternalGraph.prototype = {
                     throw "Assertion failed: all childhubs should have at least one child associated with them";  // if not, re-ranking relationship nodes breaks
                 for (var i = 0; i < outEdges.length; i++)
                     if (!this.isPerson(outEdges[i]))
-                        throw "Assertion failed: childhubs are only connected to people (failed for " + this.getVertexNameById(v) + ")";
+                        throw "Assertion failed: childhubs are only connected to people (failed for " + this.getVertexDescription(v) + ")";
             }
         }
 
@@ -452,7 +544,7 @@ InternalGraph.prototype = {
         this._markAllReachableComponents( this.parentlessNodes[0], reachable );
         for (var v = 0; v < this.v.length; v++) {
             if (!reachable.hasOwnProperty(v))
-                throw "Assertion failed: disconnected component detected (" + this.getVertexNameById(v) + ")";
+                throw "Assertion failed: disconnected component detected (" + this.getVertexDescription(v) + ")";
         }
 
     },
@@ -495,16 +587,25 @@ InternalGraph.prototype = {
         }
     },
 
-    getVertexIdByName: function(name) {
-        if (!this.nameToId.hasOwnProperty(name))
-            throw "getVertexIdByName: No such vertex [" + name + "]";
-        return this.nameToId[name];
+    getVertexNameById: function(v) {
+        var firstname = this.properties[v].hasOwnProperty("fName") ? this.properties[v]["fName"] : "";
+        var lastname  = this.properties[v].hasOwnProperty("lName")  ? this.properties[v]["lName"] : "";
+
+        if (firstname != "" && lastname != "" ) firstname += " ";
+
+        return firstname + lastname;
     },
 
-    getVertexNameById: function(v) {
-        if (!this.idToName.hasOwnProperty(v))
-            throw "getVertexNameById: No such vertex [" + v + "]";
-        return this.idToName[v];
+    getVertexDescription: function(v) {
+        var desc = "id: " + v + ", name: <" + this.getVertexNameById(v) + ">, type: ";
+        switch (this.type[v]) {
+        case TYPE.PERSON:       desc += "PERSON";   break;
+        case TYPE.RELATIONSHIP: desc += "RELATION"; break;
+        case TYPE.CHILDHUB:     desc += "CHILDHUB"; break;
+        case TYPE.VIRTUAL:      desc += "VIRTUAL";  break;
+        default:                desc += "ERROR";    break;
+        }
+        return "[" + desc + "]";
     },
 
     getVertexWidth: function(v) {
@@ -521,6 +622,10 @@ InternalGraph.prototype = {
 
     hasEdge: function(fromV, toV) {
         return this.weights[fromV].hasOwnProperty(toV);
+    },
+
+    isValidId: function(v) {
+        return (v >=0 && v < this.v.length);
     },
 
     getNumVertices: function() {
@@ -562,12 +667,10 @@ InternalGraph.prototype = {
     },
 
 	isRelationship: function(v) {
-        // TODO
 	    return (this.type[v] == TYPE.RELATIONSHIP);
 	},
 
 	isChildhub: function(v) {
-        // TODO
 	    return (this.type[v] == TYPE.CHILDHUB);
 	},
 
@@ -579,24 +682,75 @@ InternalGraph.prototype = {
         return (v > this.getMaxRealVertexId());
 	},
 
+    isAdopted: function(v)
+    {
+        if (this.properties[v].hasOwnProperty("isAdopted"))
+            return this.properties[v]["isAdopted"];
+        return false;
+    },
+
+	getRelationshipChildhub: function(v) {
+	    if (!this.isRelationship(v))
+	        throw "Assertion failed: applying getRelationshipChildhub() to a non-relationship node";
+
+	    return this.v[v][0];
+	},
+
+	getAllPartners: function(v) {
+	    if (!this.isPerson(v))
+	        throw "Assertion failed: attempting to get partners of a non-person";
+
+        var relationships = this.v[v];
+
+        var result = [];
+        for (var r = 0; r < relationships.length; r++) {
+            var partners = this.inedges[relationships[r]];
+            partners[0] = this.upTheChainUntilPerson(partners[0]);
+            partners[1] = this.upTheChainUntilPerson(partners[1]);
+            if (partners[0] != v)
+                result.push(partners[0]);
+            else
+                result.push(partners[1]);
+        }
+        return result;
+	},
+
 	getParents: function(v) {
 	    if (!this.isPerson(v))
 	        throw "Assertion failed: attempting to get parents of a non-person";
-	    // TODO + checks + long edges (this only works on a graph with no virtual nodes)
-	    // skips through relationship and child nodes and returns an array of two real parents. If none found returns []
+
 	    if (this.inedges[v].length == 0)
 	        return [];
-	    return this.inedges[this.inedges[this.inedges[v][0]][0]];
+
+	    // skips through relationship and child nodes and returns an array of two real parents. If none found returns []
+
+	    var parentRelationship = this.getProducingRelationship(v);
+
+	    var inEdges = this.getInEdges(parentRelationship);
+
+	    if (inEdges.length != 2)
+	        throw "Assertion failed: exactly two parents";
+
+	    return [this.upTheChainUntilPerson(inEdges[0]), this.upTheChainUntilPerson(inEdges[1])];
 	},
 
 	getProducingRelationship: function(v) {
 	    if (!this.isPerson(v))
 	        throw "Assertion failed: attempting to get producing relationship of a non-person";
-	    // TODO + checks
+
 	    // find the relationship which produces this node (or null if not present)
 	    if (this.inedges[v].length == 0) return null;
 	    return this.inedges[this.inedges[v][0]][0];
-	}
+	},
+
+	upTheChainUntilPerson: function(v) {
+	    if (this.isPerson(v)) return v;
+
+	    if (!this.isVirtual(v))
+	        throw "Assertion failed: upTheChainUntilPerson() can be applied to a perosn or a virtual node only";
+
+	    return this.upTheChainUntilPerson( this.inedges[v][0] );  // virtual nodes have only one in-edges, all the way up until a person node
+	},
 };
 
 
@@ -812,6 +966,26 @@ Ordering.prototype = {
         this.move( rank, oldOrder, shiftAmount );
 	},
 
+    removeUnplugged: function() {
+        var result = this.order[0].slice(0); //copy of original unplugged IDs
+
+        for (var u = 0; u < this.order[0].length; u++) {
+            var unplugged = this.order[0][u];
+
+	        for (var i = 0; i < this.order.length; i++)
+	            for (var j = 0; j < this.order[i].length; j++ ) {
+	                if (this.order[i][j] > unplugged)
+	                    this.order[i][j]--;
+	            }
+
+	        this.vOrder.splice(unplugged, 1);
+        }
+
+        this.order[0] = [];
+
+        return result;
+    },
+
 	insertAndShiftAllIdsAboveVByOne: function ( v, rank, newOrder ) {
 	    // used when when a new vertex is inserted into the graph, which increases all IDs above v by one
 	    // so need to modify the data for all existing vertices first, and then insert the new vertex
@@ -870,7 +1044,16 @@ function shuffleArray (array) {
 }
 */
 
-function arrayContains(array, item){
+function cloneObject(obj) {
+    var target = {};
+    for (var i in obj) {
+        if (obj.hasOwnProperty(i))
+            target[i] = obj[i];
+    }
+    return target;
+}
+
+function arrayContains(array, item) {
     if (Array.prototype.indexOf) {
         return !(array.indexOf(item) < 0);
     }
@@ -883,13 +1066,27 @@ function arrayContains(array, item){
     }
 }
 
-function removeFirstOccurrenceByValue(array, item){
+function replaceInArray(array, value, newValue) {
     for(var i in array){
-        if(array[i]==item){
+        if(array[i] == value) {
+            array[i] = newValue;
+            break;
+        }
+    }
+}
+
+function removeFirstOccurrenceByValue(array, item) {
+    for(var i in array) {
+        if(array[i] == item) {
             array.splice(i,1);
             break;
-            }
+        }
     }
+}
+
+function isInt(n) {
+    //return +n === n && !(n % 1);
+    return !(n % 1);
 }
 
 function swap (array, x, y) {
