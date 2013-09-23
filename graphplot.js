@@ -72,6 +72,7 @@ DrawGraph.prototype = {
         // to accomodate that multi-rank edges are split into a chain of edges between new
         // "virtual" nodes on intermediate ranks
         this.GG = this.G.makeGWithSplitMultiRankEdges(this.ranks, this.maxRank);
+        this.G  = undefined;
 
         printObject( this.GG );
 
@@ -1350,6 +1351,8 @@ DrawGraph.prototype = {
         // Note2: also need to shorten incoming multi-rank edges by one node
         //        (see removeRelationshipRanks())
 
+        if (this.maxRank === undefined) return;
+
         var handled = {};
 
         // pass1: simple cases: parents are next to each other.
@@ -1540,6 +1543,15 @@ DrawGraph.prototype = {
 
             this.maxRank--;
         }
+
+        // remove all unplugged vertices
+        var unplugged = this.order.removeUnplugged().sort();
+        console.log("Removing unnecessary long edge pieces: " + stringifyObject(unplugged));
+        for (var i = 0; i < unplugged.length; i++) {
+            var removedID = unplugged[i] - i;   // "-i" because after each splice array size decreases by one and item N is going to be at location N-1, then N-2, etc
+            this.ranks.splice(removedID, 1);
+            this.GG.remove(removedID);
+        }
     },
 
     improveOrdering: function()
@@ -1565,7 +1577,9 @@ DrawGraph.prototype = {
                 if (!this.GG.isPerson(v)) continue;
                 ancestors[v] = {};
                 ancestors[v][v] = 0;
-                var parents = this.G.getParents(v);
+                if (this.GG.isAdopted(v)) continue; // TODO: assume adopted have no known parents
+                var parents = this.GG.getParents(v);
+                //console.log("v: " + v + ", parents: " + stringifyObject(parents));
                 for (var j = 0; j < parents.length; j++) {
                     var familyBranch = ancestors[parents[j]];
 
@@ -1573,7 +1587,7 @@ DrawGraph.prototype = {
                         if (familyBranch.hasOwnProperty(u)) {
                             if (ancestors[v].hasOwnProperty(u)) {   // relatives found!
                                 //console.log("relatives: " + v + " and " + u);
-                                var rel = this.G.getProducingRelationship(v);
+                                var rel = this.GG.getProducingRelationship(v);
                                 consangr[rel] = true;
                                 ancestors[v][u] = Math.min( familyBranch[u] + 1, ancestors[v][u] );
                             }
@@ -1585,13 +1599,15 @@ DrawGraph.prototype = {
             }
         }
 
+        //console.log("Ancestors1: " + stringifyObject(ancestors));
+
         // set ancestors for partnership nodes as well - equal to combined ancestors on both parents
         // (just for convenience/unification when used by the graphical interface)
-        for (var v = 0; v <= this.GG.maxRealVertexId; v++) {
+        for (var v = 0; v <= this.GG.getMaxRealVertexId(); v++) {
             if (!this.GG.isRelationship(v)) continue;
             var parents = this.GG.getInEdges(v);
 
-            ancestors[v] = ancestors[parents[0]];
+            ancestors[v] = cloneObject( ancestors[parents[0]] );
 
             for (var a in ancestors[parents[1]])
                 if (ancestors[parents[1]].hasOwnProperty(a)) {
@@ -1603,7 +1619,7 @@ DrawGraph.prototype = {
                 }
         }
 
-        //printObject(ancestors);
+        //console.log("Ancestors2: " + stringifyObject(ancestors));
 
         return {ancestors: ancestors, consangr: consangr};
     },
@@ -1647,14 +1663,22 @@ DrawGraph.prototype = {
 
         var shiftBelowNodes = {};
 
+        //console.log("GG: " + stringifyObject(this.GG));
+        //console.log("Order: " + stringifyObject(this.order));
+
         // 1) go over childnode ranks.
         for (var r = _startRank; r <= this.maxRank; r+=_rankStep) {
 
             var len = this.order.order[r].length;
             for (var i = 0; i < len; i++) {
                 var v   = this.order.order[r][i];
+
+                if (this.GG.isVirtual(v)) continue;
+                if (!this.GG.isChildhub(v)) throw "Assertion failed: childhub nodes at every other rank ("+v+")";
+
                 var v_x = this.positions[v];
 
+                //console.log("in[" + v + "] @ r = " + r);
                 var parent   = this.GG.getInEdges(v)[0];
                 var parent_x = this.positions[parent];
 
@@ -1662,9 +1686,6 @@ DrawGraph.prototype = {
 
                 var doShift = false;
                 shiftBelowNodes[v] = {};                // nodes to the left shift below to avoid crossings between their right and our parent-to-childhub
-
-                if (this.GG.isVirtual(v)) continue;
-                if (!this.GG.isChildhub(v)) throw "Assertion failed: childhub nodes at every other rank ("+v+")";
 
                 var outEdges = this.GG.getOutEdges(v);
                 for (var j = 0; j < outEdges.length; j++) {
@@ -1682,6 +1703,7 @@ DrawGraph.prototype = {
                         var edges = this.GG.getOutEdges(u);
                         var u_x   = this.positions[u];
 
+                        //console.log("u = " + u);
                         var parent_u   = this.GG.getInEdges(u)[0];
                         var parent_u_x = this.positions[parent_u];
 
@@ -1773,7 +1795,7 @@ DrawGraph.prototype = {
         return verticalLevels;
     },
 
-    computeRankY: function()
+    computeRankY: function(oldRanks, oldRankY)
     {
         var rankY = [0, 0];  // rank 0 is virtual, rank 1 starts at relative 0
 
@@ -1782,6 +1804,18 @@ DrawGraph.prototype = {
             //       horizontal lines (childlines & relationship lines) between two ranks it is good to separate those ranks vertically
             //       more than ranks with less horizontal lines between them
             rankY[r] = rankY[r-1] + this.yLevelSize + this.yExtraPerHorizontalLevel*(Math.max(this.vertLevel.rankVerticalLevels[r-1],2) - 2);
+        }
+
+        if (oldRanks && oldRankY) {
+            // attempt to keep the old Y coordinate for the node with ID == 0 to minimize UI redraws
+            var oldRank = oldRanks[0];
+            var newRank = this.ranks[0];
+            var oldY = oldRankY[oldRank];
+            var newY = rankY[newRank];
+            var shiftAmount = newY - oldY;
+            for ( var r = 0; r <= this.maxRank; r++ ) {
+                rankY[r] -= shiftAmount;
+            }
         }
 
         return rankY;
@@ -2218,7 +2252,8 @@ DrawGraph.prototype = {
         }
     },
 
-    find_left_boundary: function(v, xcoord) {
+    find_left_boundary: function(v, xcoord)
+    {
         if (this.order.vOrder[v] > 0)
             return xcoord.getLeftMostNoDisturbPosition(v);
 
