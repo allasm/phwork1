@@ -2,9 +2,9 @@ function display_raw_graph(G, renderTo) {
     printObject(G);
     document.getElementById(renderTo).innerHTML =
         '<pre>'+
-        'vertices:   ' + stringifyObject(G.nameToId)+'\n'+
-        'edgesFromV: ' + stringifyObject(G.v)+'\n'+
-        'weights:    ' + stringifyObject(G.weights) + '\n</pre>';
+        'edgesFromV: ' + stringifyObject(G.v) + '\n' +
+        'weights:    ' + stringifyObject(G.weights) +'\n' +
+        'properties: ' + stringifyObject(G.properties) + '\n</pre>';
 }
 
 
@@ -25,6 +25,18 @@ function addNewParents (form, positionedGraph, redrawRenderTo) {
         console.log("Adding parents to: " + inputs[index].value);
         positionedGraph.addNewParents(parseInt(inputs[index].value));
     }
+
+    display_processed_graph(positionedGraph, redrawRenderTo);
+    return false;
+}
+
+function assignParents (form, positionedGraph, redrawRenderTo) {
+    var inputs = form.getElementsByTagName('input');
+    var child  = inputs[0].value;
+    var parent = inputs[1].value;
+    console.log("Assigning " + parent + " to be the parent of " + child);
+
+    positionedGraph.assignParent(parent, child);
 
     display_processed_graph(positionedGraph, redrawRenderTo);
     return false;
@@ -119,10 +131,10 @@ function drawPersonBox ( canvas, scale, x, scaledY, width, label, sex ) {
     // y: top of node
 
     var cornerRadius = 0;
-    if (sex == "f")
+    if (sex == "F")
         cornerRadius = scale.yscale * scale.yLevelSize/2;
     var fill = "#ccc";
-    if (sex == "u")
+    if (sex == "U")
         fill = "#ddd";
 
     var box = canvas.rect( scale.xshift + (x - width/2)*scale.xscale, scaledY, width*scale.xscale, scale.yLevelSize * scale.yscale, cornerRadius );
@@ -247,17 +259,16 @@ function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg
     var positions = positionedGraph.DG.positions;
     var consangr  = positionedGraph.DG.consangr;
     var vertLevel = positionedGraph.DG.vertLevel;
+    var rankYraw  = positionedGraph.DG.rankY;
 
     var scale = { xscale: 4.0, yscale: 1.0, xshift: 5, yshift: 5, yLevelSize: 30, yInterLevelGap: 6, yExtraPerHorizontalLevel: 8 };
 
     if (debugMsg) canvas.text(50,10,debugMsg);
 
     // precompute Y coordinate for different ranks (so that it is readily available when drawing multi-rank edges)
-    var rankYcoord = [0, scale.yshift];
-    for ( var r = 2; r < ordering.order.length; r++ ) {
-        // note: scale.yExtraPerHorizontalLevel*(vertLevel.rankVerticalLevels[r] - 1) part comes from the idea that if there are many horizontal lines between two ranks
-        //       we want to separate those ranks vertically more than we separate other ranks
-        rankYcoord[r] = rankYcoord[r-1] + (scale.yInterLevelGap + scale.yLevelSize + scale.yExtraPerHorizontalLevel*(Math.max(vertLevel.rankVerticalLevels[r-1],2) - 2)) * scale.yscale;
+    var rankYcoord = [0];
+    for ( var r = 1; r < rankYraw.length; r++ ) {
+        rankYcoord[r] = scale.yshift + rankYraw[r] * scale.yscale;
     }
 
     var maxY = (rankYcoord[ordering.order.length-1] + 200);
@@ -358,7 +369,7 @@ function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg
                 }
 
                 //drawPersonBox( canvas, scale, x, y, width, G.getVertexNameById(v) + "/" + v.toString() /*positions[v].toString()*/ , G.properties[v]["sex"]);
-                drawPersonBox( canvas, scale, x, y, width, v.toString() + "/" + positions[v].toString() , G.properties[v]["sex"]);
+                drawPersonBox( canvas, scale, x, y, width, v.toString() + "/" + positions[v].toString() , G.properties[v]["gender"]);
                 continue;
             }
 
@@ -582,6 +593,8 @@ function printObject(obj) {
 }
 
 function _printObjectInternal(o, level) {
+    if (level > 10) return "...[too deep]...";
+
     var output = '';
 
     if (typeof o == 'object')
