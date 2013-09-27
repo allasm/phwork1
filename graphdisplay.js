@@ -145,7 +145,7 @@ function drawPersonBox ( canvas, scale, x, scaledY, width, label, sex ) {
 }
 
 function computeChildhubHorizontalY ( scale, scaledY, targetLevel ) {
-    return scaledY + (scale.yLevelSize + scale.yInterLevelGap)*scale.yscale + (targetLevel-1) * scale.yExtraPerHorizontalLevel;
+    return scaledY + (scale.yLevelSize + scale.yInterLevelGap)*scale.yscale + (targetLevel-1) * scale.yExtraPerHorizontalLevel *scale.yscale;
 }
 
 function drawRelationshipChildhubEdge( canvas, scale, x, scaledY, targetLevel ) {
@@ -251,6 +251,10 @@ function browserVisibleWidth(){
 
 function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg) {
 
+    positionedGraph.DG.displayDebug = true;
+    positionedGraph.DG.displayGraph(positionedGraph.DG.positions, "after improvement");
+    positionedGraph.DG.displayDebug = false;
+
     //if (!debugPrint) printObject(renderPackage);
 
     var G         = positionedGraph.DG.GG;
@@ -261,7 +265,7 @@ function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg
     var vertLevel = positionedGraph.DG.vertLevel;
     var rankYraw  = positionedGraph.DG.rankY;
 
-    var scale = { xscale: 4.0, yscale: 1.0, xshift: 5, yshift: 5, yLevelSize: 30, yInterLevelGap: 6, yExtraPerHorizontalLevel: 8 };
+    var scale = { xscale: 4.0, yscale: 2.0, xshift: 5, yshift: 5, yLevelSize: 15, yInterLevelGap: 2, yExtraPerHorizontalLevel: 4 };
 
     if (debugMsg) canvas.text(50,10,debugMsg);
 
@@ -333,10 +337,17 @@ function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg
                     if (consangr.hasOwnProperty(destination))
                         consangrRelationship = true;
 
+                    var xprev   = x;
+                    var ybottom = y + (scale.yLevelSize/2)*scale.yscale;
+
                     if ( rankU == r ) {
                         if (orderU == orderV+1 || orderU == orderV-1) {
                             // draw relationship edge directly
                             drawNeighbourRelationshipEdge( canvas, scale, x, y, width, u_x, consangrRelationship );
+                            xprev    = u_x;
+                            u   = G.getOutEdges(u)[0];
+                            u_x = positions[u];
+                            u_y = rankYcoord[ranks[u]];
                         }
                         else
                         {
@@ -345,87 +356,32 @@ function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg
 
                         }
                     }
-                    else {
-                        // draw "long" (multi-rank) vetrtical relationship edge
-                        // TODO: collec the entire path and draw a curve instead of line segments
-                        // note: always have a small horizontal part before connecting to middle of relationship node
-                        var xx = x;
-                        var yy = y + (scale.yLevelSize/2)*scale.yscale;
-                        do {
-                            drawVerticalRelationshipLine( canvas, scale, xx, yy, u_x, u_y, consangrRelationship );
-                            u     = G.getOutEdges(u)[0];
-                            rankU = ranks[u];
-                            xx    = u_x;
-                            yy    = u_y;
-                            u_x   = positions[u];
-                            u_y   = rankYcoord[rankU];
-                            if (!G.isVirtual(G.getOutEdges(u)[0])) { u_y += (scale.yLevelSize/2)*scale.yscale; }
-                        }
-                        while (G.isVirtual(u))
-                        yy -= (scale.yLevelSize/2)*scale.yscale;
-                        //drawVerticalRelationshipLine( canvas, scale, xx, yy, u_x, u_y + (scale.yLevelSize/2)*scale.yscale, consangrRelationship );
-                        drawNeighbourRelationshipEdge( canvas, scale, xx, yy, 0, u_x, consangrRelationship );
+
+                    if (u <= G.getMaxRealVertexId()) continue;
+
+                    // draw "long" (multi-rank) vetrtical relationship edge
+                    var xx = xprev;
+                    var yy = ybottom;
+                    do {
+                        //console.log("part: u = " + u + " @ " + xx + "," + yy + " -> " + u_x + "," + u_y);
+                        drawVerticalRelationshipLine( canvas, scale, xx, yy, u_x, u_y, consangrRelationship );
+                        u     = G.getOutEdges(u)[0];
+                        rankU = ranks[u];
+                        xx    = u_x;
+                        yy    = u_y;
+                        u_x   = positions[u];
+                        u_y   = rankYcoord[rankU];
+                        if (!G.isVirtual(G.getOutEdges(u)[0])) { u_y += (scale.yLevelSize/2)*scale.yscale; }
                     }
+                    while (G.isVirtual(u))
+                    yy -= (scale.yLevelSize/2)*scale.yscale;
+                    drawNeighbourRelationshipEdge( canvas, scale, xx, yy, 0, u_x, consangrRelationship );
                 }
 
-                //drawPersonBox( canvas, scale, x, y, width, G.getVertexNameById(v) + "/" + v.toString() /*positions[v].toString()*/ , G.properties[v]["sex"]);
+                //drawPersonBox( canvas, scale, x, y, width, G.getVertexNameById(v) + "/" + v.toString(), G.properties[v]["sex"]);
                 drawPersonBox( canvas, scale, x, y, width, v.toString() + "/" + positions[v].toString() , G.properties[v]["gender"]);
                 continue;
             }
-
-                    /*
-                    else {
-                        // the entire long edge is handled here so that it is easie rot replace by splines or something else later on
-                        var yy      = topY + 30;
-                        var targetY = topY + 50;
-                        var prevX   = midX;
-
-                        while (true) {
-                            var leftTargetX = positions[u] - G.getVertexHalfWidth(u);
-                            var midTargetX  = 5 + leftTargetX * xScale + (G.getVertexWidth(u) * xScale)/2;
-
-                            if (u > G.getMaxRealVertexId()) {
-                                var line = canvas.path("M " + (prevX) + " " + yy + " L " + (midTargetX) +
-                                                       " " + targetY);
-                                line.attr({"stroke":stroke});
-
-                                if (G.getOutEdges(u)[0] > G.getMaxRealVertexId() ) {
-                                    // draw a line across the node itself (instead of a box as for real nodes)
-                                    var line2 = canvas.path("M " + (midTargetX) + " " + targetY + " L " + (midTargetX) +
-                                                           " " + (targetY+30));
-                                    line2.attr({"stroke":stroke});
-                                }
-                                else { yy -= 30; }
-                            }
-                            else {
-                                var leftTargetX  = positions[u] - G.getVertexHalfWidth(u);
-                                var rightTargetX = positions[u] + G.getVertexHalfWidth(u);
-                                var midTargetX  = 5 + leftTargetX * xScale + (G.getVertexWidth(u) * xScale)/2;
-                                // final piece - this one goes across to the right or to the left (since multi-rank edges only connect relationship nodes)
-                                // note: only possible with "relationship" nodes on the same rank
-                                if ( ordering.vOrder[u] < ordering.vOrder[v] ) {   // edge to the left
-                                    var line = canvas.path("M " + prevX + " " + (yy) + " L " + midTargetX + " " + (yy + 15));
-                                    line.attr({"stroke":stroke});
-                                }
-                                else                                               // edge to the right
-                                {
-                                    var line = canvas.path("M " + prevX + " " + (yy) + " L " + midTargetX + " " + (yy + 15));
-                                    line.attr({"stroke":stroke});
-                                }
-                                break;
-                            }
-
-                            v = u;
-                            u = G.getOutEdges(u)[0];
-
-                            yy      += 50;
-                            targetY += 50;
-
-                            prevX = midTargetX;
-                        }
-                    }
-                }
-            }*/
         }
     }
 }
@@ -487,7 +443,8 @@ function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debu
             var outEdges = G.getOutEdges(v);
 
             for ( var j = 0; j < outEdges.length; j++ ) {
-                var u = outEdges[j];
+                var currentV = v;
+                var u        = outEdges[j];
 
                 var leftTargetX  = positions[u] - G.getVertexHalfWidth(u);
                 var rightTargetX = positions[u] + G.getVertexHalfWidth(u);
@@ -500,16 +457,22 @@ function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debu
                 if (consangr.hasOwnProperty(destination))
                     stroke = "#F00";
 
-                if ( ranks[u] == ranks[v] )  // edge across
+                //console.log("edge " + v + " to " + u);
+                if ( ranks[u] == ranks[currentV] )  // edge across
                 {
                     // note: only possible with "relationship" nodes on the same rank
-                    if ( ordering.vOrder[u] < ordering.vOrder[v] ) {   // edge to the left
+                    if ( ordering.vOrder[u] < ordering.vOrder[currentV] ) {   // edge to the left
                         var line = canvas.path("M " + (5+leftX*xScale) + " " + (topY + 15) + " L " + (5+rightTargetX*xScale) + " " + (topY + 15));
                         line.attr({"stroke":stroke});
                     }
                     else {                                             // edge to the right
                         var line = canvas.path("M " + (5+rightX*xScale) + " " + (topY + 15) + " L " + (5+leftTargetX*xScale) + " " + (topY + 15));
                         line.attr({"stroke":stroke});
+                    }
+
+                    if (u > G.getMaxRealVertexId())
+                    {
+                        // TODO
                     }
                 }
                 else                         // edge below
@@ -533,7 +496,7 @@ function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debu
                             var leftTargetX = positions[u] - G.getVertexHalfWidth(u);
                             var midTargetX  = 5 + leftTargetX * xScale + (G.getVertexWidth(u) * xScale)/2;
 
-                            if (u > G.getMaxRealVertexId() || ranks[u] != ranks[v]) {
+                            if (u > G.getMaxRealVertexId() || ranks[u] != ranks[currentV]) {
                                 var line = canvas.path("M " + (prevX) + " " + yy + " L " + (midTargetX) +
                                                        " " + targetY);
                                 line.attr({"stroke":stroke});
@@ -554,7 +517,7 @@ function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debu
                                 var midTargetX  = 5 + leftTargetX * xScale + (G.getVertexWidth(u) * xScale)/2;
                                 // final piece - this one goes across to the right or to the left (since multi-rank edges only connect relationship nodes)
                                 // note: only possible with "relationship" nodes on the same rank
-                                if ( ordering.vOrder[u] < ordering.vOrder[v] ) {   // edge to the left
+                                if ( ordering.vOrder[u] < ordering.vOrder[currentV] ) {   // edge to the left
                                     var line = canvas.path("M " + prevX + " " + (yy) + " L " + midTargetX + " " + (yy + 15));
                                     line.attr({"stroke":stroke});
                                 }
@@ -566,8 +529,8 @@ function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debu
                                 break;
                             }
 
-                            v = u;
-                            u = G.getOutEdges(u)[0];
+                            currentV = u;
+                            u        = G.getOutEdges(u)[0];
 
                             yy      += 50;
                             targetY += 50;
