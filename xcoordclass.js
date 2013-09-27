@@ -1,37 +1,27 @@
-XCoord = function() {
-    this.xcoord = [] ; // coordinates of _center_ of every vertex
+XCoord = function(xinit, graph, halfWidth) {
+    this.xcoord = xinit; // coordinates of _center_ of every vertex
 
     // local copies just for convenience & performance
-    this.halfWidth = [];
+    this.halfWidth = halfWidth ? halfWidth : [];
 
-    this.horizPersSeparationDist = undefined;
-    this.horizRelSeparationDist  = undefined;
+    if (!halfWidth)
+    for (var i = 0; i < graph.GG.vWidth.length; i++)
+        this.halfWidth[i] = Math.floor(graph.GG.vWidth[i]/2);
 
-    this.order = undefined;
-    this.ranks = undefined;
-    this.type  = undefined;
+    this.horizPersSeparationDist = graph.horizontalPersonSeparationDist;
+    this.horizRelSeparationDist  = graph.horizontalRelSeparationDist;
+
+    this.graph = graph;
 };
 
 XCoord.prototype = {
 
-    init: function (xinit, horizontalPersonSeparationDist, horizontalRelSeparationDist, widths, order, ranks, type) {
-        this.xcoord = xinit;
-
-        this.horizPersSeparationDist = horizontalPersonSeparationDist;
-        this.horizRelSeparationDist  = horizontalRelSeparationDist;
-
-        for (var i = 0; i < widths.length; i++)
-            this.halfWidth[i] = Math.floor(widths[i]/2);
-
-        this.order = order;
-
-        this.ranks = ranks;
-
-        this.type  = type;
-    },
-
     getSeparation: function (v1, v2) {
-        if (this.type[v1] == TYPE.RELATIONSHIP || this.type[v2] == TYPE.RELATIONSHIP)
+        if (this.graph.GG.type[v1] == TYPE.RELATIONSHIP || this.graph.GG.type[v2] == TYPE.RELATIONSHIP)
+            return this.horizRelSeparationDist;
+
+        if ((this.graph.GG.type[v1] == TYPE.VIRTUALEDGE || this.graph.GG.type[v2] == TYPE.VIRTUALEDGE) &&
+            (this.graph.GG.hasEdge(v1,v2) || this.graph.GG.hasEdge(v2,v1)))
             return this.horizRelSeparationDist;
 
         return this.horizPersSeparationDist;
@@ -40,13 +30,16 @@ XCoord.prototype = {
     getLeftMostNoDisturbPosition: function(v, allowNegative) {
         var leftBoundary = this.halfWidth[v];
 
-        var order = this.order.vOrder[v];
+        var order = this.graph.order.vOrder[v];
         if ( order > 0 ) {
-            var leftNeighbour = this.order.order[this.ranks[v]][order-1];
+            var leftNeighbour = this.graph.order.order[this.graph.ranks[v]][order-1];
 
             leftBoundary += this.getRightEdge(leftNeighbour) + this.getSeparation(v, leftNeighbour);
+
+            //console.log("leftNeighbour: " + leftNeighbour + ", rightEdge: " + this.getRightEdge(leftNeighbour) + ", separation: " + this.getSeparation(v, leftNeighbour));
         }
-        else if (allowNegative) return -Infinity;
+        else if (allowNegative)
+            return -Infinity;
 
         return leftBoundary;
     },
@@ -54,9 +47,9 @@ XCoord.prototype = {
     getRightMostNoDisturbPosition: function(v) {
         var rightBoundary = Infinity;
 
-        var order = this.order.vOrder[v];
-        if ( order < this.order.order[this.ranks[v]].length-1 ) {
-            var rightNeighbour = this.order.order[this.ranks[v]][order+1];
+        var order = this.graph.order.vOrder[v];
+        if ( order < this.graph.order.order[this.graph.ranks[v]].length-1 ) {
+            var rightNeighbour = this.graph.order.order[this.graph.ranks[v]][order+1];
             rightBoundary = this.getLeftEdge(rightNeighbour) - this.getSeparation(v, rightNeighbour) - this.halfWidth[v];
         }
 
@@ -90,11 +83,11 @@ XCoord.prototype = {
         this.xcoord[v] += amount;
 
         var rightEdge = this.getRightEdge(v);
-        var rank      = this.ranks[v];
-        var order     = this.order.vOrder[v];
+        var rank      = this.graph.ranks[v];
+        var order     = this.graph.order.vOrder[v];
 
-        for (var i = order + 1; i < this.order.order[rank].length; i++) {
-            var rightNeighbour = this.order.order[rank][i];
+        for (var i = order + 1; i < this.graph.order.order[rank].length; i++) {
+            var rightNeighbour = this.graph.order.order[rank][i];
 
             if (this.getLeftEdge(rightNeighbour) >= rightEdge + this.getSeparation(v, rightNeighbour)) {
                 // we are not interfering with the vertex to the right
@@ -111,6 +104,29 @@ XCoord.prototype = {
         return amount;
     },
 
+    moveNodeAsCloseToXAsPossible: function (v, targetX, allowNegative) {
+        var x = this.xcoord[v];
+        if (x > targetX) {
+            var leftMostOK = this.getLeftMostNoDisturbPosition(v, allowNegative);
+            if (leftMostOK <= targetX)
+                this.xcoord[v] = targetX;
+            else
+                this.xcoord[v] = leftMostOK;
+        }
+        else {
+            var rightMostOK = this.getRightMostNoDisturbPosition(v);
+            if (rightMostOK >= targetX)
+                this.xcoord[v] = targetX;
+            else
+                this.xcoord[v] = rightMostOK;
+        }
+
+        if (this.xcoord[v] != x) // we've moved the mode
+            return true;
+
+        return false;
+    },
+
     normalize: function() {
         // finds the smallest margin on the left and shifts the entire graph to the left
         var minExtra = this.xcoord[0] - this.halfWidth[0];
@@ -124,17 +140,8 @@ XCoord.prototype = {
     },
 
     copy: function () {
-        // returns a deep copy
-        var newX = new XCoord();
-
-        newX.xcoord = this.xcoord.slice(0);
-
-        newX.halfWidth               = this.halfWidth;
-        newX.horizPersSeparationDist = this.horizPersSeparationDist;
-        newX.horizRelSeparationDist  = this.horizRelSeparationDist;
-        newX.order                   = this.order;
-        newX.ranks                   = this.ranks;
-        newX.type                    = this.type;
+        // returns an instance with deep copy of this.xcoord
+        var newX = new XCoord(this.xcoord.slice(0), this.graph, this.halfWidth);
 
         return newX;
     }
