@@ -34,9 +34,10 @@ DrawGraph.prototype = {
     xCoordEdgeWeightValue:  true,        // when optimizing edge length/curvature take
                                          // edge weight into account or not
     horizontalPersonSeparationDist: 10,
-    horizontalRelSeparationDist:    6,
-    yLevelSize:                     36,
-    yExtraPerHorizontalLevel:       8,
+    horizontalRelSeparationDist:     6,
+    yDistanceNodeToChildhub:        18,
+    yDistanceChildhubToNode:        16,
+    yExtraPerHorizontalLine:         4,
 
     displayDebug: false,
 
@@ -98,7 +99,7 @@ DrawGraph.prototype = {
         timer.printSinceLast("=== Ancestors + re-ranking runtime: ");
 
         // 3)
-        this.positions = this.position(this.horizontalPersonSeparationDist, this.horizontalRelSeparationDist);
+        this.positions = this.position();
 
         timer.printSinceLast("=== Positioning runtime: ");
 
@@ -1800,10 +1801,12 @@ DrawGraph.prototype = {
         var rankY = [0, 0];  // rank 0 is virtual, rank 1 starts at relative 0
 
         for ( var r = 2; r <= this.maxRank; r++ ) {
-            // note: yExtraPerHorizontalLevel * vertLevel.rankVerticalLevels[r] part comes from the idea that if there are many
+            var yDistance = (this.GG.isChildhub(this.order.order[r][0])) ? this.yDistanceNodeToChildhub : this.yDistanceChildhubToNode;
+
+            // note: yExtraPerHorizontalLine * vertLevel.rankVerticalLevels[r] part comes from the idea that if there are many
             //       horizontal lines (childlines & relationship lines) between two ranks it is good to separate those ranks vertically
             //       more than ranks with less horizontal lines between them
-            rankY[r] = rankY[r-1] + this.yLevelSize + this.yExtraPerHorizontalLevel*(Math.max(this.vertLevel.rankVerticalLevels[r-1],2) - 2);
+            rankY[r] = rankY[r-1] + yDistance + this.yExtraPerHorizontalLine*(Math.max(this.vertLevel.rankVerticalLevels[r-1],2) - 2);
         }
 
         if (oldRanks && oldRankY) {
@@ -1823,7 +1826,7 @@ DrawGraph.prototype = {
 
     computeNodeY: function( rank, level )
     {
-        return this.rankY[rank] + (level - 1)*this.yExtraPerHorizontalLevel;
+        return this.rankY[rank] + (level - 1)*this.yExtraPerHorizontalLine;
     },
     //========================================[vertical separation for horizontal edges]=
 
@@ -1842,9 +1845,9 @@ DrawGraph.prototype = {
         debug_display_processed_graph(renderPackage, 'output', true, message);
     },
 
-    position: function(horizontalPersonSeparationDist, horizontalRelSeparationDist)
+    position: function()
     {
-        var xcoord = this.init_xcoord(horizontalPersonSeparationDist, horizontalRelSeparationDist);
+        var xcoord = this.init_xcoord();
         //printObject(xcoord.xcoord);
 
         //this.displayGraph(xcoord.xcoord, 'init');
@@ -1987,7 +1990,7 @@ DrawGraph.prototype = {
         return coeff;
     },
 
-    init_xcoord: function(horizontalPersonSeparationDist, horizontalRelSeparationDist)
+    init_xcoord: function()
     {
         var xinit = [];
 
@@ -2005,19 +2008,17 @@ DrawGraph.prototype = {
 
                 xinit[v] = xThisRank + vWidth;
 
-                var horizSeparation = horizontalPersonSeparationDist;
+                var horizSeparation = this.horizontalPersonSeparationDist;
                 if ( this.GG.isRelationship(v) )
-                    horizSeparation = horizontalRelSeparationDist;
+                    horizSeparation = this.horizontalRelSeparationDist;
                 if ( i < this.order.order[r].length-1 && this.GG.isRelationship(this.order.order[r][i+1]) )
-                    horizSeparation = horizontalRelSeparationDist;
+                    horizSeparation = this.horizontalRelSeparationDist;
 
                 xThisRank += vWidth*2 + horizSeparation;
             }
         }
 
-        var xcoord = new XCoord();
-        xcoord.init(xinit, horizontalPersonSeparationDist, horizontalRelSeparationDist,
-                    this.GG.vWidth, this.order, this.ranks, this.GG.type);
+        var xcoord = new XCoord(xinit, this);
 
         return xcoord;
     },
@@ -2063,6 +2064,7 @@ DrawGraph.prototype = {
                 // far away, so we can only compute the score for the ranks we care about.
 
                 var median = this.compute_median(v, xcoord, considerEdgesFromAbove, considerEdgesToBelow);
+
                 if (median != median)
                     median = xcoord.xcoord[v];
 
@@ -2073,7 +2075,7 @@ DrawGraph.prototype = {
                 var noDisturbMax = xcoord.getRightMostNoDisturbPosition(v);
                 var maxSafeShift = (noDisturbMax < median) ? noDisturbMax - xcoord.xcoord[v] : maxShift;
 
-                //if (v==9 || v == 10)
+                //if (v==31 || v == 32)
                 //    console.log("shiftright-rank-" + r + "-v-" + v + "  -->  DesiredShift: " + maxShift + ", maxSafe: " + maxSafeShift);
 
                 if (maxShift <= 0) continue;
