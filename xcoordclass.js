@@ -8,9 +8,6 @@ XCoord = function(xinit, graph, halfWidth) {
     for (var i = 0; i < graph.GG.vWidth.length; i++)
         this.halfWidth[i] = Math.floor(graph.GG.vWidth[i]/2);
 
-    this.horizPersSeparationDist = graph.horizontalPersonSeparationDist;
-    this.horizRelSeparationDist  = graph.horizontalRelSeparationDist;
-
     this.graph = graph;
 };
 
@@ -18,13 +15,19 @@ XCoord.prototype = {
 
     getSeparation: function (v1, v2) {
         if (this.graph.GG.type[v1] == TYPE.RELATIONSHIP || this.graph.GG.type[v2] == TYPE.RELATIONSHIP)
-            return this.horizRelSeparationDist;
+            return this.graph.horizontalRelSeparationDist;
 
         if ((this.graph.GG.type[v1] == TYPE.VIRTUALEDGE || this.graph.GG.type[v2] == TYPE.VIRTUALEDGE) &&
             (this.graph.GG.hasEdge(v1,v2) || this.graph.GG.hasEdge(v2,v1)))
-            return this.horizRelSeparationDist;
+            return this.graph.horizontalRelSeparationDist;
 
-        return this.horizPersSeparationDist;
+        // separation between twins: a bit less than between other people
+        if ((this.graph.GG.type[v1] == TYPE.PERSON || this.graph.GG.type[v2] == TYPE.PERSON) &&
+            (this.graph.GG.getTwinGroupId(v1) == this.graph.GG.getTwinGroupId(v2)) &&
+            (this.graph.GG.getTwinGroupId(v1) != null) )
+            return this.graph.horizontalTwinSeparationDist;
+        
+        return this.graph.horizontalPersonSeparationDist;
     },
 
     getLeftMostNoDisturbPosition: function(v, allowNegative) {
@@ -44,13 +47,19 @@ XCoord.prototype = {
         return leftBoundary;
     },
 
-    getRightMostNoDisturbPosition: function(v) {
+    getRightMostNoDisturbPosition: function(v, alsoMoveRelationship) {
         var rightBoundary = Infinity;
 
         var order = this.graph.order.vOrder[v];
         if ( order < this.graph.order.order[this.graph.ranks[v]].length-1 ) {
             var rightNeighbour = this.graph.order.order[this.graph.ranks[v]][order+1];
             rightBoundary = this.getLeftEdge(rightNeighbour) - this.getSeparation(v, rightNeighbour) - this.halfWidth[v];
+            
+            if (alsoMoveRelationship && this.graph.GG.type[rightNeighbour] == TYPE.RELATIONSHIP) {
+                var rightMost = this.getRightMostNoDisturbPosition(rightNeighbour);
+                var slack     = rightMost - this.xcoord[rightNeighbour];
+                rightBoundary += slack;
+            }
         }
 
         return rightBoundary;
@@ -209,7 +218,7 @@ VerticalLevels = function() {
     this.rankVerticalLevels   = [];   // for each rank: how many "levels" of horizontal edges are between this and next ranks
     this.childEdgeLevel       = [];   // for each "childhub" node contains the verticalLevelID to use for the child edges
                                       // (where levelID is for levels between this and next ranks)
-    this.outEdgeVerticalLevel = [];   // for each "person" node contains outgoing relationship edge level as {target1: level1, t2: l2}
+    this.outEdgeVerticalLevel = [];   // for each "person" node contains outgoing relationship edge level as {target1: {attachLevel: level, lineLevel: level}, target2: ... }
                                       // (where levelID is for levels between this and previous ranks)
 };
 

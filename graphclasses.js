@@ -113,7 +113,7 @@ InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, de
     for (var v = 0; v < inputG.length; v++) {
         var nextV = inputG[v];
 
-        var vID    = nextV.id ? nextV.id : nameToId[nextV.name];
+        var vID    = nextV.hasOwnProperty("id") ? nextV.id : nameToId[nextV.name];
         var origID = vID;
 
         var substitutedID = false;
@@ -503,7 +503,7 @@ InternalGraph.prototype = {
     },
 
     validate: function() {
-        console.log("-- VALIDATING: " + stringifyObject(this));
+        //console.log("-- VALIDATING: " + stringifyObject(this));
 
         if( this.v.length == 0 ) return;
 
@@ -649,15 +649,11 @@ InternalGraph.prototype = {
     },
 
     getMaxRealVertexId: function() {
-        return this.maxRealVertexId; // vertices with IDs less or equal to this are guaranteed to be "real"
+        return this.maxRealVertexId; // all vertices with IDs greater than this are of type VIRTUALEDGE
     },
 
     getOutEdges: function(v) {
         return this.v[v];
-    },
-
-    getNumOutEdges: function(v) {
-        return this.v[v].length;
     },
 
     getInEdges: function(v) {
@@ -703,6 +699,21 @@ InternalGraph.prototype = {
         if (this.properties[v].hasOwnProperty("isAdopted"))
             return this.properties[v]["isAdopted"];
         return false;
+    },
+
+    getOppositeGender: function(v) {
+        if (!this.isPerson(v))
+	        throw "Assertion failed: attempting to get gender of a non-person";
+
+        if (this.properties[v]["gender"] == "U") {
+            return "U";
+        }
+        else if(this.properties[v]["gender"] == "M") {
+            return "F";
+        }
+        else {
+            return "M";
+        }
     },
 
 	getRelationshipChildhub: function(v) {
@@ -786,8 +797,11 @@ InternalGraph.prototype = {
 	        throw "Assertion failed: attempting to get producing relationship of a non-person";
 
 	    // find the relationship which produces this node (or null if not present)
-	    if (this.inedges[v].length == 0) return null;
-	    return this.inedges[this.inedges[v][0]][0];
+	    if (this.inedges[v].length == 0) return null;	    
+	    var chHub = this.inedges[v][0];
+	    
+	    if (this.inedges[chHub].length == 0) return null;
+	    return this.inedges[chHub][0];
 	},
 
 	upTheChainUntilNonVirtual: function(v) {
@@ -807,12 +821,77 @@ InternalGraph.prototype = {
         var path = [v];
 
         while (this.isVirtual(v))
-        {
+        { 
             v = this.inedges[v][0];
             path.push(v);
         }
 
         return path;
+    },
+
+    getUnusedTwinGroupId: function(v)
+    {
+        if (!this.isRelationship(v))
+            throw "Assertion failed: incorrect v in getNumTwinGroups()";
+
+        var childhubId = this.v[v][0];
+        var children = this.v[childhubId];
+
+        var twinGroupExists = [];
+        for (var c = 0; c < children.length; c++) {
+            var child = children[c];
+            if (this.properties[child].hasOwnProperty('twinGroup'))
+                twinGroupExists[this.properties[child]['twinGroup']] = true;
+        }
+
+        var firstFreeTwinGroupId = 0;
+        for (var i = 0; i < twinGroupExists.length; i++) {
+            if (twinGroupExists[i] !== undefined)
+                firstFreeTwinGroupId = i+1;
+            else
+                break;
+        }
+        return firstFreeTwinGroupId;
+    },
+
+    getTwinGroupId: function(v)
+    {
+        if (!this.properties[v].hasOwnProperty('twinGroup'))
+            return null;
+        return this.properties[v]['twinGroup'];
+    },
+
+    getAllTwinsOf: function(v)
+    {
+        if (!this.isPerson(v))
+            throw "Assertion failed: incorrect v in getAllTwinsOf()";
+
+        if (!this.properties[v].hasOwnProperty('twinGroup'))
+            return [v];
+
+        var twinGroupId = this.properties[v]['twinGroup'];
+
+        if (this.inedges[v].length == 0)
+            throw "Assertion failed: a node with no parents can not have twins";
+
+        var childhubId = this.inedges[v][0];
+        var children = this.v[childhubId];
+
+        var twins = [];
+        for (var c = 0; c < children.length; c++) {
+            var child = children[c];
+            if (this.properties[child].hasOwnProperty('twinGroup') && this.properties[child]['twinGroup'] == twinGroupId)
+                twins.push(child);
+        }
+        return twins;
+    },
+    
+    isParentToTwinEdge: function (fromV, toV)
+    {
+        if (this.isPerson(toV) && this.isChildhub(fromV) &&
+            this.getTwinGroupId(toV) != null) return true;
+        
+        return false;
     }
 };
 
@@ -837,6 +916,9 @@ RankedSpanningTree.prototype = {
         //   Nodes are placed in the queue when they have no unscanned in-edges.
         //   As nodes are taken off the queue, they are assigned the least rank
         //   that satisfies their in-edges, and their out-edges are marked as scanned.
+        //
+        //   Note: the resulting tree only uses edges in the direction they are
+        //         used in the original graph.
 
         if (G.v.length == 0) return;
 
@@ -894,11 +976,6 @@ RankedSpanningTree.prototype = {
                 }
             }
         }
-
-        // Note: so far resulting tree only uses edges in the direction they are
-        //       used in the original graph. Some other algorithms in the paper
-        //       (the "cut_values" part) may violate this property, if applied
-        //       to this tree
     },
 
     getRanks: function() {
@@ -1048,6 +1125,12 @@ Ordering.prototype = {
 
         return result;
     },
+    
+    remove: function(v, rank) {
+        var order = this.vOrder[v];
+        this.moveVertexToRankAndOrder(rank, order, 0, 0);       
+        this.removeUnplugged();        
+    },
 
 	insertAndShiftAllIdsAboveVByOne: function ( v, rank, newOrder ) {
 	    // used when when a new vertex is inserted into the graph, which increases all IDs above v by one
@@ -1075,14 +1158,9 @@ Ordering.prototype = {
 //==================================================================================================
 
 _copy2DArray = function(from, to) {
-    for (var i = 0; i < from.length; i++) {
+    for (var i = 0; i < from.length; ++i) {
         to.push(from[i].slice(0));
     }
-}
-
-_makeFlattened2DArrayCopy = function(array) {
-    var flattenedcopy = [].concat.apply([], array);
-    return flattenedcopy;
 }
 
 function cloneObject(obj) {
@@ -1100,7 +1178,7 @@ function arrayContains(array, item) {
         return !(array.indexOf(item) < 0);
     }
     else {
-        for (var i = 0; i < array.length; i++) {
+        for (var i = 0; i < array.length; ++i) {
             if (array[i] === item)
                 return true;
         }
@@ -1113,12 +1191,25 @@ function arrayIndexOf(array, item) {
         return (array.indexOf(item));
     }
     else {
-        for (var i = 0; i < array.length; i++) {
+        for (var i = 0; i < array.length; ++i) {
             if (array[i] === item)
                 return i;
         }
         return -1;
     }
+}
+
+function indexOfLastMinElementInArray(array) {
+    var min      = array[0];
+    var minIndex = 0;
+
+    for (var i = 1; i < array.length; ++i) {
+        if(array[i] <= min) {
+            minIndex = i;
+            min      = array[i];
+        }
+    }
+    return minIndex;
 }
 
 function replaceInArray(array, value, newValue) {
@@ -1144,18 +1235,22 @@ function isInt(n) {
     return !(n % 1);
 }
 
-function swap (array, x, y) {
-    var b = array[y];
-    array[y] = array[x];
-    array[x] = b;
+_makeFlattened2DArrayCopy = function(array) {
+    var flattenedcopy = [].concat.apply([], array);
+    return flattenedcopy;
+}
+
+function swap (array, i, j) {
+    var b = array[j];
+    array[j] = array[i];
+    array[i] = b;
 }
 
 function permute2DArrayInFirstDimension (permutations, array, from) {
    var len = array.length;
 
    if (from == len-1) {
-       //if ( len == 1 || Math.max.apply(null, array[0]) < Math.max.apply(null, array[len-1]) )   // discard mirror copies of other permutations
-           permutations.push(_makeFlattened2DArrayCopy(array));
+       permutations.push(_makeFlattened2DArrayCopy(array));
        return;
    }
 

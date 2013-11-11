@@ -34,6 +34,7 @@ DrawGraph.prototype = {
     xCoordEdgeWeightValue:  true,        // when optimizing edge length/curvature take
                                          // edge weight into account or not
     horizontalPersonSeparationDist: 10,
+    horizontalTwinSeparationDist:    8,
     horizontalRelSeparationDist:     6,
     yDistanceNodeToChildhub:        18,
     yDistanceChildhubToNode:        16,
@@ -77,21 +78,25 @@ DrawGraph.prototype = {
 
         printObject( this.GG );
 
-        this.order = this.ordering(this.maxInitOrderingBuckets, this.maxOrderingIterations);
+        this.disconnectTwins();
 
+        this.order = this.ordering(this.maxInitOrderingBuckets, this.maxOrderingIterations);
+        
         timer.printSinceLast("=== Ordering runtime: ");
 
-        // 2.1)
-        var ancestors = this.findAllAncestors();
-
-        this.ancestors = ancestors.ancestors;
-        this.consangr  = ancestors.consangr;
-
-		// 2.2)
+		// 2.1)
         // once ordering is known need to re-rank relationship nodes to be on the same level as the
         // lower ranked parent. Attempt to place next to one of the parents; having ordering info
         // helps to pick the parent in case parents are on the same level and not next to each other
         this.reRankRelationships();
+
+        this.reconnectTwins();
+
+        // 2.2)
+        var ancestors = this.findAllAncestors();
+
+        this.ancestors = ancestors.ancestors;
+        this.consangr  = ancestors.consangr;
 
         //printObject( this.GG );
         //printObject( this.ranks );
@@ -295,8 +300,8 @@ DrawGraph.prototype = {
 
         var best          = undefined;
         var bestCrossings = Infinity;
-
-        var rootlessPartners = this.findAllRootlessPartners();
+        
+        var rootlessPartners = this.findAllRootlessPartners();        
         // remove them from the graph entirely, because
         //  1) those are easy to place later
         //  2) reduces graph size/complexity, improving performance (both speed & quality) of other heuristics
@@ -363,7 +368,6 @@ DrawGraph.prototype = {
         }
 
         timer.printSinceLast("Initial ordering: ");
-
         var bestEdgeLengthScore = this.edge_length_score(best);
 
         console.log("Initial ordering: " + _printObjectInternal(best.order, 0));
@@ -480,7 +484,7 @@ DrawGraph.prototype = {
                     var relNode  = outEdges[0];
 
                     // remove edge v->relNode from the graph. Only remove the in-edge, as outedge will never be scanned
-                    this.GG.inedges[relNode] = [p];    // originally it was [p,v]
+                    removeFirstOccurrenceByValue(this.GG.inedges[relNode], v);  // was [p,v], becomes [p]
                 }
 
             }
@@ -522,7 +526,7 @@ DrawGraph.prototype = {
                     var relNode  = outEdges[0];
 
                     // add back the v->relNode edge
-                    this.GG.inedges[relNode] = [p, v];
+                    this.GG.inedges[relNode].push(v);   // was [p], becomes [p,v]
 
                     // insert v into ordering: insert on the side with less partners.
                     // ideally we should insert according to the relationship node order, but that will be auto-fixed by transpose()
@@ -642,9 +646,109 @@ DrawGraph.prototype = {
                 }
             }
         }
-
         //console.log("Order after reconnect leaves: " + stringifyObject(order));
-   },
+    },
+
+    disconnectTwins: function()
+    {
+        this.GG.tempTwinsList = {};
+
+        var handled = {};
+        for (var v = 0; v <= this.GG.getMaxRealVertexId(); v++) {
+            if (handled[v]) continue;
+            if (!this.GG.isPerson(v)) continue;
+            var twinGroupId = this.GG.getTwinGroupId(v);
+            if (twinGroupId == null) continue;
+
+            this.GG.tempTwinsList[v] = [];
+
+            var childhub = this.GG.getInEdges(v)[0];
+            var allTwins = this.GG.getAllTwinsOf(v);
+            for (var i = 0; i < allTwins.length; i++) {
+                var twin = allTwins[i];
+                if (twin == v) continue;
+
+                // 1) remove connection from childhub to twin
+                // 2) replace in-edges for all nodes twin connects to by an inedge from v
+                // 3) add all twin's outedges to v
+                // 4) add twin to the backup list of twins of v
+                // 5) update this.GG.leafNodes
+
+                // 1
+                removeFirstOccurrenceByValue( this.GG.v[childhub], twin);
+                // 2 + 3
+                var outEdges = this.GG.getOutEdges(twin);
+                for (var j = 0; j < outEdges.length; j++) {
+                    var rel = outEdges[j];
+                    replaceInArray(this.GG.inedges[rel], twin, v);
+                    this.GG.v[v].push(rel);
+                    this.GG.weights[v][rel] = this.GG.weights[twin][rel];
+                }
+                // 4
+                this.GG.tempTwinsList[v].push(twin);
+                // 5
+                if (outEdges.length == 0)
+                    removeFirstOccurrenceByValue(this.GG.leafNodes, twin);
+
+                handled[twin] = true;
+
+                console.log("REMOVED TWIN " + twin);
+            }
+        }
+    },
+
+    reconnectTwins: function(order)
+    {
+        if (!order) order = this.order;
+
+        var handled = {};
+        for (var v = 0; v <= this.GG.getMaxRealVertexId(); v++) {
+            if (handled[v]) continue;
+            if (!this.GG.isPerson(v)) continue;
+            var twinGroupId = this.GG.getTwinGroupId(v);
+            if (twinGroupId == null) continue;
+
+            var rank = this.ranks[v];
+
+            var childhub = this.GG.getInEdges(v)[0];
+            var allDisconnectedTwins = this.GG.tempTwinsList[v];
+
+            for (var i = 0; i < allDisconnectedTwins.length; i++) {
+                var twin = allDisconnectedTwins[i];
+
+                // 1) remove outedges which actually belong to twin from v (needed for next step)
+                // 2) find the position to reinsert the twin & insert it
+                // 3) restore connection from childhub to twin
+                // 4) restore in-edges for all nodes twin connects to to twin
+                // 5) update this.GG.leafNodes
+
+                //1
+                for (var j = 0; j < this.GG.getOutEdges(twin).length; j++) {
+                    var rel = this.GG.getOutEdges(twin)[j];
+                    removeFirstOccurrenceByValue(this.GG.inedges[rel], v);
+                    removeFirstOccurrenceByValue(this.GG.v[v], rel);
+                    delete this.GG.weights[v][rel];
+                }
+                //2
+                var insertOrder = this.findBestTwinInsertPosition(twin, this.GG.getOutEdges(twin), order);
+                order.insert(rank, insertOrder, twin);
+                //3 + 4
+                this.GG.v[childhub].push(twin);
+                var outEdges = this.GG.getOutEdges(twin);
+                for (var j = 0; j < outEdges.length; j++) {
+                    var rel = outEdges[j];
+                    this.GG.inedges[rel].push(twin);
+                }
+                // 5
+                if (outEdges.length == 0)
+                    this.GG.leafNodes.push(twin);
+
+                handled[twin] = true;
+            }
+        }
+
+        delete this.GG.tempTwinsList;
+    },
 
     computePossibleParentlessNodePermutations: function(maxInitOrderingBuckets, rootlessPartners)
     {
@@ -877,12 +981,18 @@ DrawGraph.prototype = {
 
     edge_length_score: function(order, onlyRank)
     {
-        var totalEdgeLengthInPositions = 0;
-        var totalEdgeLengthInChildren  = 0;
+        // Returns the penalty score that penalizes:
+        //   higher priority: people in a relationship being far from each other
+        //                    (higher penalty for greater distance)
+        //   lower priority:  children of the same relationship not being close to each other
+        //                    (higher penalty for greater distance between leftmost and rightmost child)
+        //   lowest priority: father not being on the left, mother notbeing on the right
+        //                    (constant penalty for each case)
+        
+        var totalEdgeLengthInPositions     = 0;
+        var totalEdgeLengthInChildren      = 0;
+        var totalEdgeLengthInFatherOnRight = 0;
 
-        // Two goals: without increasing the number of edge crossings try to
-        //   higher priority: place people in a relationship close(r) to each other
-        //   lower priority:  place all children close(r) to each other
         for (var i = 0; i < this.GG.getNumVertices(); i++) {
 
             if (onlyRank) {
@@ -894,7 +1004,6 @@ DrawGraph.prototype = {
     		    var parents = this.GG.getInEdges(i);
 
                 if (parents.length == 2) {     // while each relationship has 2 parents, during ordering some parents may be "unplugged" to simplify the graph
-
                     // only if parents have the same rank
                     if ( this.ranks[parents[0]] != this.ranks[parents[1]] )
         			    continue;
@@ -903,6 +1012,12 @@ DrawGraph.prototype = {
                     var order2 = order.vOrder[parents[1]];
 
                     totalEdgeLengthInPositions += Math.abs(order1 - order2);
+                    
+                    // penalty, if any, for fathe ron the left, mother on the right
+                    var leftParent   = (order1 < order2) ? parents[0] : parents[1]; 
+                    var genderOfLeft = this.GG.properties[leftParent]["gender"];
+                    if (genderOfLeft == 'F')
+                        totalEdgeLengthInFatherOnRight++;
                 }
             }
 
@@ -925,7 +1040,7 @@ DrawGraph.prototype = {
         }
 
         //console.log("r = " + onlyRank + ", edgeLength = " + totalEdgeLengthInPositions + ", childLen = " + totalEdgeLengthInChildren);
-        return totalEdgeLengthInPositions*1000 + totalEdgeLengthInChildren;
+        return totalEdgeLengthInPositions*100000 + totalEdgeLengthInChildren*1000 + totalEdgeLengthInFatherOnRight;
     },
 
     edge_crossing: function(order, onlyRank, dontUseApproximationForRelationshipEdges)
@@ -936,7 +1051,7 @@ DrawGraph.prototype = {
         // nodes on given rank.
         //
         // Assumes that edges always go from lower ranks to higher ranks or
-        // between nodes on the same rank
+        // between nodes of the same rank
 
         var numCrossings = 0.0;
 
@@ -947,12 +1062,14 @@ DrawGraph.prototype = {
         for (var r = rankFrom; r <= rankTo; r++) {
             var numVert = order.order[r].length;
 
-            for (var i = 0; i < numVert - 1; i++) {   // -1 because we only check crossings of edges goigmn out of vertices of higher orders
+            for (var i = 0; i < numVert - 1; i++) {   // -1 because we only check crossings of edges going out of vertices of higher orders
                 var v = order.order[r][i];
-
+                
                 var outEdges = this.GG.getOutEdges(v);
                 var len      = outEdges.length;
 
+                var isChhub = this.GG.isChildhub(v); 
+                
                 for (var j = 0; j < len; j++) {
                     var targetV = outEdges[j];
 
@@ -972,10 +1089,16 @@ DrawGraph.prototype = {
                                                          // - and if "1" is assigned transpose wont fix certain local cases
                         }
                     }
-
+                    
                     // so we have an edge v->targetV. Have to check how many edges
-                    // between rank[v] and rank[targetV] this particular edge corsses.
-                    numCrossings += this._edge_crossing_crossingsByOneEdge(order, v, targetV);
+                    // between rank[v] and rank[targetV] this particular edge corsses.                    
+                    var crossings = this._edge_crossing_crossingsByOneEdge(order, v, targetV);
+
+                    // special case: count edges from parents to twins twice
+                    // (since all twins are combined into one, and this edge actually represents multiple parent-child edges)                    
+                    var twinCoeff = (isChhub && this.GG.isParentToTwinEdge(v, targetV)) ? 2.0 : 1.0;
+                    
+                    numCrossings += crossings * twinCoeff;                                           
                 }
             }
         }
@@ -1009,13 +1132,16 @@ DrawGraph.prototype = {
         if (rankV == rankT)
         {
             return this.numNodesWithParentsInBetween(order, rankV, orderV, orderT);
-        }
+        }        
+        //if (rankV +1 != rankT) throw "Assertion failed: edge corssings";
 
         var verticesAtRankV = order.order[ rankV ];    // all vertices at rank V
 
         // edges from rankV to rankT: only those after v (orderV+1)
         for (var ord = orderV+1; ord < verticesAtRankV.length; ord++) {
             var vertex = verticesAtRankV[ord];
+            
+            var isChhub = this.GG.isChildhub(vertex); 
 
             var outEdges = this.GG.getOutEdges(vertex);
             var len      = outEdges.length;
@@ -1027,6 +1153,11 @@ DrawGraph.prototype = {
 
                 if (orderTarget < orderT) {
                     crossings++;
+                    
+                    // special case: count edges from parents to twins twice
+                    // (since all twins are combined into one, and this edge actually represents multiple parent-child edges)
+                    if (isChhub && this.GG.isParentToTwinEdge(vertex, target))
+                        crossings++;                            
                 }
             }
         }
@@ -1036,18 +1167,32 @@ DrawGraph.prototype = {
 
     numNodesWithParentsInBetween: function (order, rank, order1, order2)
     {
-        // TODO!
-        // TODO: treat special case of same-rank edges (relationship edges):
-        //   - first, some may not cross because both source and target are between order1 & order2
-        //   - second, it mya be an out edge not in edge, but still crosses as sourc eis inside, but target is outside [order1, order2]
-
+        // TODO: while this function correctly computes what its name suggests, it is
+        //       actually used to compute number of crossings for same-rank edges. And for that
+        //       need not only to sompute nodes with parents, but correctly compute crossings of
+        //       other same-rank edges (relationship edges). The difference is:
+        //       - even if a node between order1 and order2 has an in-edge, that in-edge may not cross the
+        //         edge from order1 to order2 because both source and target are between order1 & order2
+        //       - it may be an out-edge instead of an in-edge, but still crosses as source is inside,
+        //         but target is outside [order1, order2]
+        
         var numNodes = 0;
         var fromBetween = Math.min(order1, order2) + 1;
         var toBetween   = Math.max(order1, order2) - 1;
         for (var o = fromBetween; o <= toBetween; o++) {
             var b = order.order[rank][o];
+            
             if (this.GG.getInEdges(b).length > 0)
                 numNodes++;
+
+            if (this.GG.isPerson(b)) {
+                // count crossing twin's parental edge as a multiple crossing
+                // (since all twins are combined into one, and this one parent edge actually represents multiple edges)
+                var twinGroupId = this.GG.getTwinGroupId(b);
+                if (twinGroupId != null) {
+                    numNodes++;
+                }
+            }
         }
         return numNodes;
     },
@@ -1179,6 +1324,29 @@ DrawGraph.prototype = {
 
             for (var r = 1; r <= this.maxRank; r++)
             {
+                try {
+                var v0 = order.order[r][0];
+                var GG = this.GG;
+                if (this.GG.isChildhub(v0)) {
+                    // just assign all childhubs the same order as their relationships)
+                    var byRelOrder = function(a,b) {
+                           var rel1 = GG.getInEdges(a)[0];
+                           var rel2 = GG.getInEdges(b)[0];
+                           
+                           return (order.vOrder[rel1] > order.vOrder[rel2]);
+                        }
+                    order.order[r].sort(byRelOrder);
+                    
+                    for (var i = 0; i <= order.order[r].length; i++)                                                
+                        order.vOrder[ order.order[r][i] ] = i;
+                    
+                    continue;
+                }
+                } catch(err)
+                {
+                    console.log("Err: " + err);
+                }
+                        
                 var numEdgeCrossings = this.edge_crossing(order, r);
 
                 if (!doMinorImprovements && numEdgeCrossings == 0) continue;
@@ -1352,6 +1520,8 @@ DrawGraph.prototype = {
         // Note2: also need to shorten incoming multi-rank edges by one node
         //        (see removeRelationshipRanks())
 
+        console.log("GG: "  + stringifyObject(this.GG));
+        
         if (this.maxRank === undefined) return;
 
         var handled = {};
@@ -1387,14 +1557,17 @@ DrawGraph.prototype = {
         // pass2: parents are not next to each other on the same rank
         for (var i = 0; i < this.GG.getNumVertices(); i++) {
             if (this.GG.isRelationship(i)) {
-    		    var parents = this.GG.getInEdges(i);
 
                 if ( handled.hasOwnProperty(i) )
                     continue; // this node has already been handled
 
+                var parents = this.GG.getInEdges(i);
+                
                 // rearrange so that parent0 is on the left - for simplicity in further logic
                 if (this.order.vOrder[parents[0]] > this.order.vOrder[parents[1]])
                     parents.reverse();
+                
+                console.log("NEED TO re-rank relatioship " + i + ", parents=" + stringifyObject(parents));
 
                 var rank = this.ranks[parents[0]];
 
@@ -1407,8 +1580,9 @@ DrawGraph.prototype = {
                 //      - try not to get inbetween well-placed relationships
                 //      - count edge crossings (TODO)
 
-                var insertOrder = undefined;
-
+                var insertOrder = null;
+                
+                /*
                 if (this.GG.isVirtual(parents[0])) {
                     // parent 0 is virtual - use parent1
                     var parent0order = this.order.vOrder[parents[0]];
@@ -1440,7 +1614,7 @@ DrawGraph.prototype = {
                     }
                     this.order.moveVertexToOrder(rank, parent1order, insertOrder);
                 }
-                else {
+                else { */
                     // both parents are real
                     var order1 = this.order.vOrder[parents[0]];
                     var order2 = this.order.vOrder[parents[1]];
@@ -1457,6 +1631,9 @@ DrawGraph.prototype = {
                         p0busy = true;
                     if (this.GG.hasEdge(parents[1],leftOfParent1))
                         p1busy = true;
+                    
+                    console.log("p0busy: " + p0busy + ", p1busy: " + p1busy);
+                    
                     if (p1busy && p0busy) {
                         // TODO: test this case
                         // both busy: find position which does not disturb "nice" relationship nodes
@@ -1466,6 +1643,15 @@ DrawGraph.prototype = {
                                 insertOrder = o;
                                 break;
                             }
+                        }
+                        if (insertOrder == null) {
+                            var parentsOfLeft = this.GG.getInEdges(leftOfParent1);
+                            var otherP1 = (parentsOfLeft[0] != parents[1]) ? parentsOfLeft[0] : parentsOfLeft[1];
+                            var orderP1 = this.order.vOrder[otherP1];
+                            if (orderP1 < order1)
+                                insertOrder = order2;
+                            else
+                                insertOrder = order1 + 1;
                         }
                     }
                     else if (p1busy) {
@@ -1482,7 +1668,7 @@ DrawGraph.prototype = {
                         // TODO: try both pick the one with less crossed edges. Need a testcase
                         insertOrder = order2;
                     }
-                }
+                /*}*/
                 //console.log("=== is relationship: " + i + ", insertOrder: " + insertOrder );
 
                 this.moveVertexToRankAndOrder( i, rank, insertOrder );
@@ -1546,7 +1732,7 @@ DrawGraph.prototype = {
         }
 
         // remove all unplugged vertices
-        var unplugged = this.order.removeUnplugged().sort();
+        var unplugged = this.order.removeUnplugged().sort(function(a,b){return a-b});
         console.log("Removing unnecessary long edge pieces: " + stringifyObject(unplugged));
         for (var i = 0; i < unplugged.length; i++) {
             var removedID = unplugged[i] - i;   // "-i" because after each splice array size decreases by one and item N is going to be at location N-1, then N-2, etc
@@ -1586,10 +1772,7 @@ DrawGraph.prototype = {
 
                     for (var u in familyBranch) {
                         if (familyBranch.hasOwnProperty(u)) {
-                            if (ancestors[v].hasOwnProperty(u)) {   // relatives found!
-                                //console.log("relatives: " + v + " and " + u);
-                                var rel = this.GG.getProducingRelationship(v);
-                                consangr[rel] = true;
+                            if (ancestors[v].hasOwnProperty(u)) {   // parents are relatives: pick the shortest path to that relative
                                 ancestors[v][u] = Math.min( familyBranch[u] + 1, ancestors[v][u] );
                             }
                             else
@@ -1600,27 +1783,37 @@ DrawGraph.prototype = {
             }
         }
 
-        //console.log("Ancestors1: " + stringifyObject(ancestors));
+        // repeat the same for relationship nodes. Note that this second pas sis required because we need to make sure both
+        // parents got their relatives computed before the relationship ancestors canbe updated.
+        // Could do all in one pass iff relationship nodes were ranked below person nodes, but while they are
+        // twins could nto be inserted correctly. So need to re-rank first, re-insert twins, compute ancestors for all including twins
+        for (var r = 1; r <= this.maxRank; r++) {
+            var nextRank = this.order.order[r];
 
-        // set ancestors for partnership nodes as well - equal to combined ancestors on both parents
-        // (just for convenience/unification when used by the graphical interface)
-        for (var v = 0; v <= this.GG.getMaxRealVertexId(); v++) {
-            if (!this.GG.isRelationship(v)) continue;
-            var parents = this.GG.getInEdges(v);
-
-            ancestors[v] = cloneObject( ancestors[parents[0]] );
-
-            for (var a in ancestors[parents[1]])
-                if (ancestors[parents[1]].hasOwnProperty(a)) {
-                    var ancestoryLength = ancestors[parents[1]][a];
-                    if (!ancestors[v].hasOwnProperty(a))
-                        ancestors[v][a] = ancestoryLength;
-                    else
-                        ancestors[v][a] = Math.min(ancestoryLength, ancestors[v][a]);
+            for (var i = 0; i < nextRank.length; i++) {
+                var v = this.order.order[r][i];
+                if (!this.GG.isRelationship(v)) continue;
+                ancestors[v] = {};
+                ancestors[v][v] = 0;
+                var parents = this.GG.getParents(v);
+                for (var j = 0; j < parents.length; j++) {
+                    var familyBranch = ancestors[parents[j]];
+                    for (var u in familyBranch) {
+                        if (familyBranch.hasOwnProperty(u)) {
+                            if (ancestors[v].hasOwnProperty(u)) {   // parents are relatives
+                                consangr[v] = true;
+                                ancestors[v][u] = Math.min( familyBranch[u] + 1, ancestors[v][u] );
+                            }
+                            else
+                                ancestors[v][u] = familyBranch[u] + 1;
+                        }
+                    }
                 }
+            }
         }
 
-        //console.log("Ancestors2: " + stringifyObject(ancestors));
+        //console.log("Ancestors: " + stringifyObject(ancestors));
+        //console.log("Consangr:  " + stringifyObject(consangr));
 
         return {ancestors: ancestors, consangr: consangr};
     },
@@ -1636,15 +1829,12 @@ DrawGraph.prototype = {
         // for each rank:
         // 1) if rank has childhub nodes:
         //    a) for each vertex on the rank, in the ordering order
-        //    b) if only one child - skip (it will be  avertical not horizontal edge)
-        //    c) check if any edges cross any edges of the vertices earlier in the order
-        //    d) if yes, add that level to the set of forbidden levels
-        //    e) pick minimum level which is not forbidden
+        //    b) check if any edges cross any edges of the vertices earlier in the order
+        //    c) if yes, add that level to the set of forbidden levels
+        //    d) pick minimum level which is not forbidden
         //
-        // 2) if rank has "person" and "relationship" nodes
-        //    a) for each "person" vertex on the rank, in the ordering order
-        //    b) for each edge which is not going to a neighbouring node
-        //    c) ... ?
+        // 2) for all person which has a relationship vertically position all outgoing relationship
+        //    lines as to avoid their crossings between each other and relationship lines from othernodes
 
         // note: using very inefficient O(childnodes^2 * childnode_outedges^2) algorithm, which runs very fast though
 
@@ -1686,8 +1876,8 @@ DrawGraph.prototype = {
                 var forbiddenLevels = {};                // levels which can't be used by v. Initially none
 
                 var doShift = false;
-                shiftBelowNodes[v] = {};                // nodes to the left shift below to avoid crossings between their right and our parent-to-childhub
-
+                shiftBelowNodes[v] = {};                // nodes to the left which need to be shifted below to avoid
+                                                        // crossings between their (right end of) child lines and our parent-to-childhub
                 var outEdges = this.GG.getOutEdges(v);
                 for (var j = 0; j < outEdges.length; j++) {
                     var target      = outEdges[j];
@@ -1758,8 +1948,8 @@ DrawGraph.prototype = {
                     // shift all affected nodes AND all nodes that they affect etc
                     var shiftAmount = (useLevel+1) - maxShiftRank;
 
-                    console.log("------- Processing: " + v);
-                    printObject(shiftBelowNodes);
+                    //console.log("------- Processing: " + v);
+                    //printObject(shiftBelowNodes);
                     //console.log("Shift amount: " + shiftAmount);
 
                     var doneProcessing = {};
@@ -1790,10 +1980,187 @@ DrawGraph.prototype = {
         }
 
 
-        // 2) go over person ranks.
-        // TODO
+        // 2) vertical positioning of person-relationship edges:
+        for (var r = 1; r <= this.maxRank; r++) {
+            var len = this.order.order[r].length;
+            for (var i = 0; i < len; i++) {
+                var v = this.order.order[r][i];
+
+                if (this.GG.isPerson(v)) {
+                    var outEdges = this.GG.getOutEdges(v);
+                    if (outEdges.length <= 0) continue;
+                    
+                    //console.log("person: " + v);
+
+                    verticalLevels.outEdgeVerticalLevel[v] = {};
+
+                    var partnerInfo = this._findLeftAndRightPartners(v);
+                    var leftEdges   = partnerInfo.leftPartners;
+                    var rightEdges  = partnerInfo.rightPartners;
+
+                    //console.log("Vert Positioning " + v);
+                    //console.log("leftEdges: " + stringifyObject(leftEdges));
+                    //console.log("rightEdges: " + stringifyObject(rightEdges));
+                    //console.log("Vert levels @ rank " + r + ": " + verticalLevels.rankVerticalLevels[r-1]);
+                    var vOrder = this.order.vOrder;
+
+                    var nextAttachL   = 0;      // attachment point of the line connecting the node and it's relationship
+                    var nextVerticalL = 0;      // vertical level of the line
+                    var prevOrder     = Infinity;
+                    for (var k = 0; k < leftEdges.length; k++) {
+                        var u = this.GG.downTheChainUntilNonVirtual( leftEdges[k] );
+
+                        if (nextVerticalL == 0) {
+                            for (var o = vOrder[leftEdges[k]] + 1; o < vOrder[v]; o++) {
+                                // there are non-virtual vertices between the node and it's relationship - need to draw the line above the nodes
+                                var w = this.order.order[r][o];
+                                if (!this.GG.isVirtual(w) && !this.GG.isRelationship(w)) { nextVerticalL = 1; break; }
+                            }
+                        }
+                        verticalLevels.outEdgeVerticalLevel[v][u] = { attachlevel: nextAttachL, verticalLevel: nextVerticalL };
+                       
+                        if (vOrder[u] == prevOrder - 1) {
+                            var prevU = this.GG.downTheChainUntilNonVirtual( leftEdges[k-1] );
+                            console.log("prevU: " + prevU);
+                            verticalLevels.outEdgeVerticalLevel[v][u]     = { attachlevel: nextAttachR-1, verticalLevel: nextVerticalR-1 };
+                            verticalLevels.outEdgeVerticalLevel[v][prevU] = { attachlevel: nextAttachR,   verticalLevel: nextVerticalR };
+                        }                        
+                        prevOrder = vOrder[u];
+                        
+                        var changed = true;
+                        while (changed) {
+                            changed = false;
+                            // search all nodes to the right and check if there is a node-to-relationship line
+                            // at the same level as this one intersecting with this one. If so:
+                            // 1) if that line goes from outside the (node, rel) interval to outside, move that other line up one level
+                            // 2) if that line goes from outside the (node, rel) interval to inside, move this line up one level
+                            // TODO
+                        };
+
+                        nextAttachL++;
+                        nextVerticalL++;
+                    }
+
+                    var nextAttachR   = 0;      // attachment point of the line connecting the node and it's relationship
+                    var nextVerticalR = 0;      // vertical level of the line
+                    for (var k = 0; k < rightEdges.length; k++) {
+                        var u = this.GG.downTheChainUntilNonVirtual( rightEdges[k] );
+                        if (nextVerticalR == 0) {
+                            for (var o = vOrder[v] + 1; o < vOrder[rightEdges[k]]; o++) {
+                                // there are non-virtual vertices between the node and it's relationship - need to draw the line above the nodes
+                                var w = this.order.order[r][o];
+                                if (!this.GG.isVirtual(w)) { nextVerticalR = 1; break; }
+                            }
+                        }
+                        
+                        verticalLevels.outEdgeVerticalLevel[v][u] = { attachlevel: nextAttachR, verticalLevel: nextVerticalR };
+                                                
+                        nextAttachR++;
+                        nextVerticalR++;
+                    }
+
+                    var maxLevel = Math.max(nextVerticalR, nextVerticalL);
+                    verticalLevels.rankVerticalLevels[r-1] += (maxLevel - 1);
+
+                    //console.log("Vert levels @ rank " + r + ": " + verticalLevels.rankVerticalLevels[r-1]);
+                }
+            }
+        }
+        console.log("Vert pos: " + stringifyObject(verticalLevels.outEdgeVerticalLevel));
+
 
         return verticalLevels;
+    },
+
+    _findLeftAndRightPartners: function(v, useOrdering)
+    {
+        var ordering = useOrdering ? useOrdering.vOrder : this.order.vOrder;   // useOrdering is passed when thi sis called from the initial ordering procedure
+
+        var rank     = this.ranks[v];
+        var orderV   = ordering[v];
+        var outEdges = this.GG.getOutEdges(v);
+
+        var leftEdges  = [];
+        var rightEdges = [];
+
+        for (var j = 0; j < outEdges.length; j++) {
+            var rel = outEdges[j];
+            if (this.ranks[rel] != rank) continue;
+            if (ordering[rel] < orderV)
+                leftEdges.push(rel);
+            else
+                rightEdges.push(rel);
+        }
+
+        var byDistToV = function(a,b){
+                var dist1 = Math.abs( ordering[a] - orderV );
+                var dist2 = Math.abs( ordering[b] - orderV );
+                return dist1-dist2;
+            };
+        leftEdges.sort ( byDistToV );
+        rightEdges.sort( byDistToV );
+        
+        //console.log("v: " + v + ", leftP: " + stringifyObject(leftEdges) + ", rightP: " + stringifyObject(rightEdges));
+        return { "leftPartners": leftEdges, "rightPartners": rightEdges };
+    },
+
+    // finds the bes tposition to insert a new twin of v which has the given set of relationships
+    findBestTwinInsertPosition: function(v, insertedTwinRelationships, useOrdering) {     // useOrdering is passed when thi sis called from the initial ordering procedure
+        var allTwins = this.GG.getAllTwinsOf(v);
+
+        var vOrder = useOrdering ? useOrdering.vOrder : this.order.vOrder;
+        var byOrder = function(a,b){ return vOrder[a] - vOrder[b]; };
+        allTwins.sort( byOrder );
+
+        // for each position [left of leftmost twin, ... ,right of rightmost twin] the total number
+        // of partnership edges originating form all twins right of position going left of position
+        // plus all edges from left of position going right of position
+        // plus number of crossings due to edges to nodes in "insertedTwinRelationships" crossing other twins
+        var numEdgesAcross  = [];
+        for (var i = 0; i <= allTwins.length; i++)
+            numEdgesAcross[i] = 0;
+
+        console.log("edges across: " + stringifyObject(numEdgesAcross));
+
+        // for each position compute number of edge crossings due to new twin edges
+        var leftMostTwinOrder = vOrder[allTwins[0]];
+        for (var i = 0; i < insertedTwinRelationships.length; i++) {
+            var rel      = insertedTwinRelationships[i];
+            var relOrder = vOrder[rel];
+
+            if (relOrder < leftMostTwinOrder)
+                for (var j = 1; j <= allTwins.length; j++) // if we insert the twin at any position other then leftmost new edges will cross all twins to the left
+                    numEdgesAcross[j] += j;
+            else
+                for (var j = 0; j < allTwins.length; j++)  // if we insert the twin at any position other then rightmost new edges will cross all twins to the right
+                    numEdgesAcross[j] += (allTwins.length - j);
+        }
+
+        console.log("after self edges - edges across: " + stringifyObject(numEdgesAcross));
+
+        // for each position compute number of edge crossings due to existing twin edges
+        for (var i = 0; i < allTwins.length; i++) {
+            var partnerInfo = this._findLeftAndRightPartners(allTwins[i], useOrdering);
+            var numLeftOf   = partnerInfo.leftPartners.length;
+            var numRightOf  = partnerInfo.rightPartners.length;
+
+            // TODO: can improve a bit when two of the twins are in a relationship and there are other twins
+            for (var j = 0; j <= i; j++)
+                numEdgesAcross[j] += numLeftOf;
+            for (var j = i + 1; j <= allTwins.length; j++)
+                numEdgesAcross[j] += numRightOf;
+
+            console.log("after twin " + allTwins[i] + " (leftOf: " + numLeftOf + ", rightOf: " + numRightOf + ") -> edges across: " + stringifyObject(numEdgesAcross));
+        }
+
+        //console.log("twin penalties: " + stringifyObject(numEdgesAcross));
+        var orderOfLeftMostTwin  = vOrder[allTwins[0]];
+        var minEdgeCrossLocation = indexOfLastMinElementInArray(numEdgesAcross);   // (index == 0) => "insert before leftmost" => (order := orderOfLeftMostTwin)
+        var order = orderOfLeftMostTwin + minEdgeCrossLocation;
+
+        console.log("edges across: " + stringifyObject(numEdgesAcross));
+        console.log("BEST INSERT POSITION for a twin of " + v + " with edges to " + stringifyObject(insertedTwinRelationships) + " is " + order);
+        return order;
     },
 
     computeRankY: function(oldRanks, oldRankY)
@@ -1827,6 +2194,12 @@ DrawGraph.prototype = {
     computeNodeY: function( rank, level )
     {
         return this.rankY[rank] + (level - 1)*this.yExtraPerHorizontalLine;
+    },
+
+    computeRelLineY: function( rank, level )
+    {
+        var shift = (level == 0) ? 0 : this.yDistanceChildhubToNode/2;
+        return this.rankY[rank] - level*this.yExtraPerHorizontalLine - shift;
     },
     //========================================[vertical separation for horizontal edges]=
 
@@ -2278,63 +2651,47 @@ DrawGraph.prototype = {
     try_straighten_long_edges: function (xcoord)
     {
         // try to straigten long edges without moving any other vertices
-
         var improved = false;
 
         var maxRealId = this.GG.getMaxRealVertexId();
         var numVert   = this.GG.getNumVertices();
 
         var checked = [];
-        for (var v = maxRealId+1; v < numVert; v++) {
-            // ignore removed virtual nodes which were placed onrank 0 by removeRelationshipRanks()
-            if (this.ranks[v] == 0)
-                checked[v] = true;
-            else
-                checked[v] = false;
-        }
+        for (var v = maxRealId+1; v < numVert; v++)
+            checked[v] = false;
 
         for (var v = maxRealId+1; v < numVert; v++) {
 
-            if (checked[v]) continue;
+            if (checked[v] || this.ranks[v] == 0) continue;
 
-            // find a long edge - something with only one in and one out edge, both going
-            // to a virtual vertex. Note: all virtual vertices have only one in and one out edge.
-            var inV = this.GG.inedges[v][0];
-            if (inV <= maxRealId) continue; // a real vertex above this
+            // find a long edge - an edge connecting real nodes of non-neighbouring ranks,
+            // consisting of virtual vertices on intermediate ranks (plus source/target)
 
-            var outV = this.GG.v[v][0];
-            if (outV <= maxRealId) continue; // a real vertex below this
+            // start from head node - the first virtual node
+            var head = v;
+            while (this.GG.isVirtual(this.GG.getInEdges(head)[0]))
+                head = this.GG.getInEdges(head)[0];
 
-            // find the entire edge + head
-            var chain = [v];
-            while (true) {
-                checked[inV] = true;
-                chain.push(inV);
-                inV = this.GG.inedges[inV][0];
-                if (inV <= maxRealId) break; // found "head"
+            var chain = [];
+            var next  = head;
+
+            // go towards the tail through out-edges
+            do {
+                checked[next] = true;
+                chain.push(next);
+                next = this.GG.getOutEdges(next)[0];
             }
-            while (true) {
-                checked[outV] = true;
-                chain.push(outV);
-                outV = this.GG.v[outV][0];
-                if (outV <= maxRealId) break; // found "tail"
-            }
+            while (this.GG.isVirtual(next));;
 
-            var ranks = this.ranks;
-            var sortfunc = function(a,b) {
-                return (ranks[a] - ranks[b]);
-            };
+            console.log("trying to straighten chain " + stringifyObject(chain));
 
-            // sort head-to-tail by rank
-            chain.sort(sortfunc);
+            // 1) try to straighten by shifting the head
 
             // go over all nodes from head to tail looking for a bend and trying
             // to move the head to remove the bend
-
             var currentCenter = xcoord.xcoord[chain[0]];
             var corridorLeft  = xcoord.getLeftMostNoDisturbPosition(chain[0]);
             var corridorRight = xcoord.getRightMostNoDisturbPosition(chain[0]);
-            if (corridorRight < corridorLeft) break;
 
             // go over all nodes from head to tail looking for a bend
             for (var i = 1; i < chain.length; i++) {
@@ -2349,11 +2706,37 @@ DrawGraph.prototype = {
                         improved      = true;
                         currentCenter = nextCenter;
                     }
-                    else {
-                        break;
-                    }
+                    else break;
                 }
+                // narrow the coridor to the common available space including this vertex as well
+                corridorLeft  = Math.max(corridorLeft,  xcoord.getLeftMostNoDisturbPosition(nextV));
+                corridorRight = Math.min(corridorRight, xcoord.getRightMostNoDisturbPosition(nextV));
+                if (corridorRight < corridorLeft) break;  // no luck, can't straighten
+            }
 
+            // 2) try to straighten by shifting the tail
+
+            // go over all nodes from tail to head looking for a bend and trying
+            // to move the tail to remove the bend
+            var lastNode      = chain.length - 1;
+            var currentCenter = xcoord.xcoord[chain[lastNode]];
+            var corridorLeft  = xcoord.getLeftMostNoDisturbPosition(chain[lastNode]);
+            var corridorRight = xcoord.getRightMostNoDisturbPosition(chain[lastNode]);
+
+            // go over all nodes from head to tail looking for a bend
+            for (var i = lastNode - 1; i >= 0; i--) {
+                var nextV      = chain[i];
+                var nextCenter = xcoord.xcoord[nextV];
+                if (nextCenter != currentCenter) {
+                    if (nextCenter >= corridorLeft && nextCenter <= corridorRight) {
+                        // all the nodes below can be shifted to this location!
+                        for (var j = lastNode; j > i; j--)
+                            xcoord.xcoord[chain[j]] = nextCenter;
+                        improved      = true;
+                        currentCenter = nextCenter;
+                    }
+                    else break;
+                }
                 // narrow the coridor to the common available space including this vertex as well
                 corridorLeft  = Math.max(corridorLeft,  xcoord.getLeftMostNoDisturbPosition(nextV));
                 corridorRight = Math.min(corridorRight, xcoord.getRightMostNoDisturbPosition(nextV));
