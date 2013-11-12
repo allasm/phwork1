@@ -1,12 +1,15 @@
-DrawGraph = function( internalG,
-                      horizontalPersonSeparationDist, // mandatory argument
-                      horizontalRelSeparationDist,    // mandatory argument
-                      maxInitOrderingBuckets,         // optional
-                      maxOrderingIterations,          // optional
-                      maxXcoordIterations,            // optional
-                      displayDebug )                  // optional
+// PositionedGraph represents the pedigree tree projected to a 2D surface,
+//                 i.e. both the underlying graph and node & edge X and Y coordinates
+
+PositionedGraph = function( baseG,                          // mandatory, BaseGraph
+                            horizontalPersonSeparationDist, // mandatory, int
+                            horizontalRelSeparationDist,    // mandatory, int
+                            maxInitOrderingBuckets,         // optional,  int
+                            maxOrderingIterations,          // optional,  int
+                            maxXcoordIterations,            // optional,  int
+                            displayDebug )                  // optional,  int
 {
-    this.G  = internalG;         // real graph (InternalGraph class)
+    this.G  = baseG;             // graph without any positioning info (of type BaseGraph)
     this.GG = undefined;         // same graph with multi-rank edges replaced by virtual vertices/edges
 
     this.ranks     = undefined;  // 1D array: index = vertex id, value = rank
@@ -26,7 +29,7 @@ DrawGraph = function( internalG,
                      maxInitOrderingBuckets, maxOrderingIterations, maxXcoordIterations, displayDebug );
 };
 
-DrawGraph.prototype = {
+PositionedGraph.prototype = {
 
     maxInitOrderingBuckets: 5,           // it may take up to ~factorial_of_this_number iterations to generate initial ordering
     maxOrderingIterations:  24,          // up to so many iterations are spent optimizing initial ordering
@@ -81,7 +84,7 @@ DrawGraph.prototype = {
         this.disconnectTwins();
 
         this.order = this.ordering(this.maxInitOrderingBuckets, this.maxOrderingIterations);
-        
+
         timer.printSinceLast("=== Ordering runtime: ");
 
 		// 2.1)
@@ -300,8 +303,8 @@ DrawGraph.prototype = {
 
         var best          = undefined;
         var bestCrossings = Infinity;
-        
-        var rootlessPartners = this.findAllRootlessPartners();        
+
+        var rootlessPartners = this.findAllRootlessPartners();
         // remove them from the graph entirely, because
         //  1) those are easy to place later
         //  2) reduces graph size/complexity, improving performance (both speed & quality) of other heuristics
@@ -988,7 +991,7 @@ DrawGraph.prototype = {
         //                    (higher penalty for greater distance between leftmost and rightmost child)
         //   lowest priority: father not being on the left, mother notbeing on the right
         //                    (constant penalty for each case)
-        
+
         var totalEdgeLengthInPositions     = 0;
         var totalEdgeLengthInChildren      = 0;
         var totalEdgeLengthInFatherOnRight = 0;
@@ -1012,9 +1015,9 @@ DrawGraph.prototype = {
                     var order2 = order.vOrder[parents[1]];
 
                     totalEdgeLengthInPositions += Math.abs(order1 - order2);
-                    
+
                     // penalty, if any, for fathe ron the left, mother on the right
-                    var leftParent   = (order1 < order2) ? parents[0] : parents[1]; 
+                    var leftParent   = (order1 < order2) ? parents[0] : parents[1];
                     var genderOfLeft = this.GG.properties[leftParent]["gender"];
                     if (genderOfLeft == 'F')
                         totalEdgeLengthInFatherOnRight++;
@@ -1064,12 +1067,12 @@ DrawGraph.prototype = {
 
             for (var i = 0; i < numVert - 1; i++) {   // -1 because we only check crossings of edges going out of vertices of higher orders
                 var v = order.order[r][i];
-                
+
                 var outEdges = this.GG.getOutEdges(v);
                 var len      = outEdges.length;
 
-                var isChhub = this.GG.isChildhub(v); 
-                
+                var isChhub = this.GG.isChildhub(v);
+
                 for (var j = 0; j < len; j++) {
                     var targetV = outEdges[j];
 
@@ -1089,16 +1092,16 @@ DrawGraph.prototype = {
                                                          // - and if "1" is assigned transpose wont fix certain local cases
                         }
                     }
-                    
+
                     // so we have an edge v->targetV. Have to check how many edges
-                    // between rank[v] and rank[targetV] this particular edge corsses.                    
+                    // between rank[v] and rank[targetV] this particular edge corsses.
                     var crossings = this._edge_crossing_crossingsByOneEdge(order, v, targetV);
 
                     // special case: count edges from parents to twins twice
-                    // (since all twins are combined into one, and this edge actually represents multiple parent-child edges)                    
+                    // (since all twins are combined into one, and this edge actually represents multiple parent-child edges)
                     var twinCoeff = (isChhub && this.GG.isParentToTwinEdge(v, targetV)) ? 2.0 : 1.0;
-                    
-                    numCrossings += crossings * twinCoeff;                                           
+
+                    numCrossings += crossings * twinCoeff;
                 }
             }
         }
@@ -1132,7 +1135,7 @@ DrawGraph.prototype = {
         if (rankV == rankT)
         {
             return this.numNodesWithParentsInBetween(order, rankV, orderV, orderT);
-        }        
+        }
         //if (rankV +1 != rankT) throw "Assertion failed: edge corssings";
 
         var verticesAtRankV = order.order[ rankV ];    // all vertices at rank V
@@ -1140,8 +1143,8 @@ DrawGraph.prototype = {
         // edges from rankV to rankT: only those after v (orderV+1)
         for (var ord = orderV+1; ord < verticesAtRankV.length; ord++) {
             var vertex = verticesAtRankV[ord];
-            
-            var isChhub = this.GG.isChildhub(vertex); 
+
+            var isChhub = this.GG.isChildhub(vertex);
 
             var outEdges = this.GG.getOutEdges(vertex);
             var len      = outEdges.length;
@@ -1153,11 +1156,11 @@ DrawGraph.prototype = {
 
                 if (orderTarget < orderT) {
                     crossings++;
-                    
+
                     // special case: count edges from parents to twins twice
                     // (since all twins are combined into one, and this edge actually represents multiple parent-child edges)
                     if (isChhub && this.GG.isParentToTwinEdge(vertex, target))
-                        crossings++;                            
+                        crossings++;
                 }
             }
         }
@@ -1175,13 +1178,13 @@ DrawGraph.prototype = {
         //         edge from order1 to order2 because both source and target are between order1 & order2
         //       - it may be an out-edge instead of an in-edge, but still crosses as source is inside,
         //         but target is outside [order1, order2]
-        
+
         var numNodes = 0;
         var fromBetween = Math.min(order1, order2) + 1;
         var toBetween   = Math.max(order1, order2) - 1;
         for (var o = fromBetween; o <= toBetween; o++) {
             var b = order.order[rank][o];
-            
+
             if (this.GG.getInEdges(b).length > 0)
                 numNodes++;
 
@@ -1332,21 +1335,21 @@ DrawGraph.prototype = {
                     var byRelOrder = function(a,b) {
                            var rel1 = GG.getInEdges(a)[0];
                            var rel2 = GG.getInEdges(b)[0];
-                           
+
                            return (order.vOrder[rel1] > order.vOrder[rel2]);
                         }
                     order.order[r].sort(byRelOrder);
-                    
-                    for (var i = 0; i <= order.order[r].length; i++)                                                
+
+                    for (var i = 0; i <= order.order[r].length; i++)
                         order.vOrder[ order.order[r][i] ] = i;
-                    
+
                     continue;
                 }
                 } catch(err)
                 {
                     console.log("Err: " + err);
                 }
-                        
+
                 var numEdgeCrossings = this.edge_crossing(order, r);
 
                 if (!doMinorImprovements && numEdgeCrossings == 0) continue;
@@ -1521,7 +1524,7 @@ DrawGraph.prototype = {
         //        (see removeRelationshipRanks())
 
         console.log("GG: "  + stringifyObject(this.GG));
-        
+
         if (this.maxRank === undefined) return;
 
         var handled = {};
@@ -1562,11 +1565,11 @@ DrawGraph.prototype = {
                     continue; // this node has already been handled
 
                 var parents = this.GG.getInEdges(i);
-                
+
                 // rearrange so that parent0 is on the left - for simplicity in further logic
                 if (this.order.vOrder[parents[0]] > this.order.vOrder[parents[1]])
                     parents.reverse();
-                
+
                 console.log("NEED TO re-rank relatioship " + i + ", parents=" + stringifyObject(parents));
 
                 var rank = this.ranks[parents[0]];
@@ -1581,7 +1584,7 @@ DrawGraph.prototype = {
                 //      - count edge crossings (TODO)
 
                 var insertOrder = null;
-                
+
                 /*
                 if (this.GG.isVirtual(parents[0])) {
                     // parent 0 is virtual - use parent1
@@ -1631,9 +1634,9 @@ DrawGraph.prototype = {
                         p0busy = true;
                     if (this.GG.hasEdge(parents[1],leftOfParent1))
                         p1busy = true;
-                    
+
                     console.log("p0busy: " + p0busy + ", p1busy: " + p1busy);
-                    
+
                     if (p1busy && p0busy) {
                         // TODO: test this case
                         // both busy: find position which does not disturb "nice" relationship nodes
@@ -1989,7 +1992,7 @@ DrawGraph.prototype = {
                 if (this.GG.isPerson(v)) {
                     var outEdges = this.GG.getOutEdges(v);
                     if (outEdges.length <= 0) continue;
-                    
+
                     //console.log("person: " + v);
 
                     verticalLevels.outEdgeVerticalLevel[v] = {};
@@ -2018,15 +2021,15 @@ DrawGraph.prototype = {
                             }
                         }
                         verticalLevels.outEdgeVerticalLevel[v][u] = { attachlevel: nextAttachL, verticalLevel: nextVerticalL };
-                       
+
                         if (vOrder[u] == prevOrder - 1) {
                             var prevU = this.GG.downTheChainUntilNonVirtual( leftEdges[k-1] );
                             console.log("prevU: " + prevU);
                             verticalLevels.outEdgeVerticalLevel[v][u]     = { attachlevel: nextAttachR-1, verticalLevel: nextVerticalR-1 };
                             verticalLevels.outEdgeVerticalLevel[v][prevU] = { attachlevel: nextAttachR,   verticalLevel: nextVerticalR };
-                        }                        
+                        }
                         prevOrder = vOrder[u];
-                        
+
                         var changed = true;
                         while (changed) {
                             changed = false;
@@ -2052,9 +2055,9 @@ DrawGraph.prototype = {
                                 if (!this.GG.isVirtual(w)) { nextVerticalR = 1; break; }
                             }
                         }
-                        
+
                         verticalLevels.outEdgeVerticalLevel[v][u] = { attachlevel: nextAttachR, verticalLevel: nextVerticalR };
-                                                
+
                         nextAttachR++;
                         nextVerticalR++;
                     }
@@ -2099,7 +2102,7 @@ DrawGraph.prototype = {
             };
         leftEdges.sort ( byDistToV );
         rightEdges.sort( byDistToV );
-        
+
         //console.log("v: " + v + ", leftP: " + stringifyObject(leftEdges) + ", rightP: " + stringifyObject(rightEdges));
         return { "leftPartners": leftEdges, "rightPartners": rightEdges };
     },
@@ -2752,7 +2755,7 @@ DrawGraph.prototype = {
 
 //-------------------------------------------------------------
 
-function draw_graph( internalG )
+function make_dynamic_positioned_graph( internalG )
 {
     var horizontalPersonSeparationDist = 10; // same relative units as in intenalG.width fields. Distance between persons
     var horizontalRelSeparationDist    = 6;  // same relative units as in intenalG.width fields. Distance between persons
@@ -2765,16 +2768,16 @@ function draw_graph( internalG )
 
     var timer = new Timer();
 
-    var drawGraph = new DrawGraph( internalG,
-                                   horizontalPersonSeparationDist,
-                                   horizontalRelSeparationDist,
-                                   orderingInitBuckets,
-                                   orderingIterations,
-                                   xcoordIterations,
-                                   true );  // display debug
+    var drawGraph = new PositionedGraph( internalG,
+                                         horizontalPersonSeparationDist,
+                                         horizontalRelSeparationDist,
+                                         orderingInitBuckets,
+                                         orderingIterations,
+                                         xcoordIterations,
+                                         true );  // display debug
 
     console.log( "=== Running time: " + timer.report() + "ms ==========" );
 
-    return new PositionedGraph(drawGraph);
+    return new DynamicPositionedGraph(drawGraph);
 }
 

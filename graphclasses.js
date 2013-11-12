@@ -1,12 +1,14 @@
-//-------------------------------------------------------------
-var TYPE = {
-  RELATIONSHIP: 1,
-  CHILDHUB:     2,
-  PERSON:       3,
-  VIRTUALEDGE:  4    // for nodes not present in the original graph used as intermediate steps in multi-rank edges
-};
+// BaseGraph represents the pedigree tree as a graph of nodes and edges with certain
+//           properties attached to both (e.g. names for nodes and weights for edges).
+//
+//           Nodes represent either persons or partnerships, while edges represent
+//           either "is part of this partnership" or "is a child of" relationships
+//           between the connected nodes.
+//
+// BaseGraph contains only the information found in the pedigree (plus possibly
+//           some cached data), i.e. there is no layout data here.
 
-InternalGraph = function(defaultPersonNodeWidth, defaultNonPersonNodeWidth)
+BaseGraph = function ( defaultPersonNodeWidth, defaultNonPersonNodeWidth )
 {
     this.v        = [];        // for each V lists (as unordered arrays of ids) vertices connected from V
     this.inedges  = [];        // for each V lists (as unordered arrays of ids) vertices connecting to V
@@ -15,23 +17,29 @@ InternalGraph = function(defaultPersonNodeWidth, defaultNonPersonNodeWidth)
 
     this.weights  = [];        // for each V contains outgoing edge weights as {target1: weight1, t2: w2}
 
+    this.type       = [];      // for each V node type (see TYPE)
+    this.properties = [];      // for each V a set of type-specific properties {"gender": "M"/"F"/"U", etc.}
+
     this.parentlessNodes = [];
     this.leafNodes       = [];
 
     this.vWidth = [];
     this.defaultPersonNodeWidth    = defaultPersonNodeWidth    ? defaultPersonNodeWidth    : 1;
     this.defaultNonPersonNodeWidth = defaultNonPersonNodeWidth ? defaultNonPersonNodeWidth : 1;
-
-    this.type       = [];      // for each V node type (see TYPE)
-    this.properties = [];      // for each V a set of type-specific properties {"gender": "M"/"F"/"U", etc.}
 };
 
+var TYPE = {
+  RELATIONSHIP: 1,
+  CHILDHUB:     2,
+  PERSON:       3,
+  VIRTUALEDGE:  4    // for nodes not present in the original graph used as intermediate steps in multi-rank edges
+};
 
-InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, defaultNonPersonNodeWidth, checkIDs)
+BaseGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, defaultNonPersonNodeWidth, checkIDs)
 {
     // note: serialize() produces the correct input for this function
 
-    var newG = new InternalGraph();
+    var newG = new BaseGraph();
 
     var nameToId = {};
 
@@ -159,7 +167,7 @@ InternalGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, de
 }
 
 
-InternalGraph.prototype = {
+BaseGraph.prototype = {
 
     serialize: function(saveWidth) {
         var output = [];
@@ -217,7 +225,7 @@ InternalGraph.prototype = {
     // Note: ranks is modified to contain ranks of virtual nodes as well
 
     makeGWithSplitMultiRankEdges: function (ranks, maxRank, doNotValidate, addOneMoreOnTheSameRank) {
-        var newG = new InternalGraph();
+        var newG = new BaseGraph();
 
         newG.defaultNonPersonNodeWidth = this.defaultNonPersonNodeWidth;
         newG.defaultPersonNodeWidth    = this.defaultPersonNodeWidth;
@@ -274,7 +282,7 @@ InternalGraph.prototype = {
 
     makeGWithCollapsedMultiRankEdges: function () {
         // performs the opposite of what makeGWithSplitMultiRankEdges() does
-        var newG = new InternalGraph();
+        var newG = new BaseGraph();
 
         newG.defaultNonPersonNodeWidth = this.defaultNonPersonNodeWidth;
         newG.defaultPersonNodeWidth    = this.defaultPersonNodeWidth;
