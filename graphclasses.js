@@ -797,9 +797,9 @@ InternalGraph.prototype = {
 	        throw "Assertion failed: attempting to get producing relationship of a non-person";
 
 	    // find the relationship which produces this node (or null if not present)
-	    if (this.inedges[v].length == 0) return null;	    
+	    if (this.inedges[v].length == 0) return null;
 	    var chHub = this.inedges[v][0];
-	    
+
 	    if (this.inedges[chHub].length == 0) return null;
 	    return this.inedges[chHub][0];
 	},
@@ -821,7 +821,7 @@ InternalGraph.prototype = {
         var path = [v];
 
         while (this.isVirtual(v))
-        { 
+        {
             v = this.inedges[v][0];
             path.push(v);
         }
@@ -885,12 +885,12 @@ InternalGraph.prototype = {
         }
         return twins;
     },
-    
+
     isParentToTwinEdge: function (fromV, toV)
     {
         if (this.isPerson(toV) && this.isChildhub(fromV) &&
             this.getTwinGroupId(toV) != null) return true;
-        
+
         return false;
     }
 };
@@ -1072,12 +1072,7 @@ Ordering.prototype = {
 
     copy: function () {
         // returns a deep copy
-        var newO = new Ordering([],[]);
-
-        _copy2DArray(this.order, newO.order);     // copy a 2D array
-        newO.vOrder = this.vOrder.slice(0);       // fast copy of 1D arrays
-
-        return newO;
+        return new Ordering(clone2DArray(this.order), this.vOrder.slice());
     },
 
     moveVertexToRankAndOrder: function ( oldRank, oldOrder, newRank, newOrder ) {
@@ -1125,11 +1120,11 @@ Ordering.prototype = {
 
         return result;
     },
-    
+
     remove: function(v, rank) {
         var order = this.vOrder[v];
-        this.moveVertexToRankAndOrder(rank, order, 0, 0);       
-        this.removeUnplugged();        
+        this.moveVertexToRankAndOrder(rank, order, 0, 0);
+        this.removeUnplugged();
     },
 
 	insertAndShiftAllIdsAboveVByOne: function ( v, rank, newOrder ) {
@@ -1152,146 +1147,5 @@ Ordering.prototype = {
 	insertRank: function (insertBeforeRank) {
 	    this.order.splice(insertBeforeRank, 0, []);
 	}
-};
-
-
-//==================================================================================================
-
-_copy2DArray = function(from, to) {
-    for (var i = 0; i < from.length; ++i) {
-        to.push(from[i].slice(0));
-    }
-}
-
-function cloneObject(obj) {
-    var target = {};
-    for (var i in obj) {
-        if (obj.hasOwnProperty(i))
-            target[i] = obj[i];
-    }
-    return target;
-}
-
-
-function arrayContains(array, item) {
-    if (Array.prototype.indexOf) {
-        return !(array.indexOf(item) < 0);
-    }
-    else {
-        for (var i = 0; i < array.length; ++i) {
-            if (array[i] === item)
-                return true;
-        }
-        return false;
-    }
-}
-
-function arrayIndexOf(array, item) {
-    if (Array.prototype.indexOf) {
-        return (array.indexOf(item));
-    }
-    else {
-        for (var i = 0; i < array.length; ++i) {
-            if (array[i] === item)
-                return i;
-        }
-        return -1;
-    }
-}
-
-function indexOfLastMinElementInArray(array) {
-    var min      = array[0];
-    var minIndex = 0;
-
-    for (var i = 1; i < array.length; ++i) {
-        if(array[i] <= min) {
-            minIndex = i;
-            min      = array[i];
-        }
-    }
-    return minIndex;
-}
-
-function replaceInArray(array, value, newValue) {
-    for(var i in array){
-        if(array[i] == value) {
-            array[i] = newValue;
-            break;
-        }
-    }
-}
-
-function removeFirstOccurrenceByValue(array, item) {
-    for(var i in array) {
-        if(array[i] == item) {
-            array.splice(i,1);
-            break;
-        }
-    }
-}
-
-function isInt(n) {
-    //return +n === n && !(n % 1);
-    return !(n % 1);
-}
-
-_makeFlattened2DArrayCopy = function(array) {
-    var flattenedcopy = [].concat.apply([], array);
-    return flattenedcopy;
-}
-
-function swap (array, i, j) {
-    var b = array[j];
-    array[j] = array[i];
-    array[i] = b;
-}
-
-function permute2DArrayInFirstDimension (permutations, array, from) {
-   var len = array.length;
-
-   if (from == len-1) {
-       permutations.push(_makeFlattened2DArrayCopy(array));
-       return;
-   }
-
-   for (var j = from; j < len; j++) {
-      swap(array, from, j);
-      permute2DArrayInFirstDimension(permutations, array, from+1);
-      swap(array, from, j);
-   }
-}
-
-
-
-// used for profiling code
-Timer = function() {
-    this.startTime = undefined;
-    this.lastCheck = undefined;
-    this.start();
-};
-
-Timer.prototype = {
-
-    start: function() {
-        this.startTime = new Date().getTime();
-        this.lastCheck = this.startTime;
-    },
-
-    restart: function() {
-        this.start();
-    },
-
-    report: function() {
-        var current = new Date().getTime();
-        var elapsed = current - this.lastCheck;
-        return elapsed;
-    },
-
-    printSinceLast: function( msg ) {
-        var current = new Date().getTime();
-        var elapsed = current - this.lastCheck;
-        this.lastCheck = current;
-        console.log( msg + elapsed + "ms" );
-    },
 };
 
