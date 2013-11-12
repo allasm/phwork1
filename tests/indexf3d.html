@@ -6,11 +6,13 @@
 
     <script type="text/javascript" src="../libs/raphael.js"></script>
 
+    <script type="text/javascript" src="../helpers.js"></script>
     <script type="text/javascript" src="../graphdisplay.js"></script>
     <script type="text/javascript" src="../queues.js"></script>
     <script type="text/javascript" src="../graphclasses.js"></script>
     <script type="text/javascript" src="../xcoordclass.js"></script>
     <script type="text/javascript" src="../graphplot.js"></script>
+    <script type="text/javascript" src="../positionedgraph.js"></script>
 
     <script type="text/javascript">
         function showGraph()
@@ -48,9 +50,7 @@
                 { name :'p8', outedges: [ {to: 'E'} ], relationship: true }
             ];
 
-            var G = new InternalGraph();
-
-            G.init_from_user_graph(inputG, 10, 2);
+            var G = InternalGraph.init_from_user_graph(inputG, 10, 2);
 
             display_raw_graph(G, 'input');
 
