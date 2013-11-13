@@ -14,7 +14,7 @@ DynamicPositionedGraph = function( drawGraph )
 DynamicPositionedGraph.makeEmpty = function (layoutRelativePersonWidth, layoutRelativeOtherWidth)
 {
     var baseG       = new BaseGraph(layoutRelativePersonWidth, layoutRelativeOtherWidth);
-    var positionedG = new PositionedGraph(G);
+    var positionedG = new PositionedGraph(baseG);
     return new DynamicPositionedGraph(positionedG);
 }
 

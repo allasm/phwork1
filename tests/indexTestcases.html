@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta content="utf-8" http-equiv="encoding">
+
+    <script type="text/javascript" src="../libs/raphael.js"></script>
+
+    <script type="text/javascript" src="testcaseDatabase.js"></script>
+    <script type="text/javascript" src="../helpers.js"></script>
+    <script type="text/javascript" src="../graphdisplay.js"></script>
+    <script type="text/javascript" src="../queues.js"></script>
+    <script type="text/javascript" src="../graphclasses.js"></script>
+    <script type="text/javascript" src="../xcoordclass.js"></script>
+    <script type="text/javascript" src="../graphplot.js"></script>
+    <script type="text/javascript" src="../positionedgraph.js"></script>
+
+    <script type="text/javascript">
+
+        function showTestCase( testCaseData )
+        {
+            var G = BaseGraph.init_from_user_graph(testCaseData.graph, 10, 2);
+
+            display_raw_graph(G, testCaseData.comment, 'input');
+
+            var timer = new Timer();
+            var dynamicG = make_dynamic_positioned_graph(G);
+            var elapsed = timer.report();
+
+            display_processed_graph(dynamicG, 'output');
+
+            console.log("Expected run time (excluding display time) in Firefox v23 on Core2 @ 2.8Ghz: " + testCaseData.runTime + "ms");
+            console.log("Run time (excluding display time) on this machine: " + (elapsed - TIME_DRAWING_DEBUG) + "ms");
+
+            //automatedCheck(dynamicG, testCaseData.validate);
+        }
+
+        function showSelectedTestCase()
+        {
+            document.getElementById("output").innerHTML = "";
+
+            var selection = document.getElementById("selectTest").value;
+            //console.log("selection: " + selection);
+
+            showTestCase(testCaseDatabase[selection]);
+        }
+
+        function start()
+        {
+            var generatedHTML = "<select id=\"selectTest\" onchange=\"showSelectedTestCase()\">";
+
+            for (var testCase in testCaseDatabase)
+                if (testCaseDatabase.hasOwnProperty(testCase)) {
+                  var comment = testCaseDatabase[testCase].comment;
+
+                  //generatedHTML += "<option value=\"" + testCase + "\">TestCase " + testCase + " (" + comment + ")</option>";
+                  generatedHTML += "<option value=\"" + testCase + "\">TestCase " + testCase + "</option>";
+                }
+
+            generatedHTML += "</select>";
+
+            document.getElementById("testcaseSelector").innerHTML = generatedHTML;
+
+            showSelectedTestCase();
+        }
+    </script>
+</head>
+<body onload="start()">
+    Select Test Case:
+    <div id="testcaseSelector"></div>
+    <br>
+    Graph:
+    <div id="input"></div>
+    <br>
+    Output:
+    <div id="output"></div>
+</body>
+</html>
+

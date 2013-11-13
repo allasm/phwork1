@@ -15,7 +15,7 @@
     <script type="text/javascript" src="../positionedgraph.js"></script>
 
     <script type="text/javascript">
-        var processedGraph;
+        var dynamicGraph;
 
         function showGraph()
         {
@@ -54,13 +54,13 @@
 
             inputG = [{"id":0,"prop":{"gender":"M","fName":"Jacob","lName":""},"outedges":[{"to":1}]},{"id":1,"rel":true,"hub":true,"prop":{},"outedges":[{"to":3}]},{"id":2,"prop":{"gender":"F"},"outedges":[{"to":1},{"to":5}]},{"id":3,"chhub":true,"prop":{},"outedges":[{"to":4},{"to":9}]},{"id":4,"prop":{"gender":"U","twinGroup":0},"outedges":[{"to":11},{"to":14}]},{"id":5,"rel":true,"hub":true,"prop":{},"outedges":[{"to":7}]},{"id":6,"prop":{"gender":"M"},"outedges":[{"to":5}]},{"id":7,"chhub":true,"prop":{},"outedges":[{"to":8},{"to":10}]},{"id":8,"prop":{"gender":"U"},"outedges":[{"to":11}]},{"id":9,"prop":{"gender":"U","twinGroup":0}},{"id":10,"prop":{"gender":"U"},"outedges":[{"to":14}]},{"id":11,"rel":true,"hub":true,"prop":{},"outedges":[{"to":12}]},{"id":12,"chhub":true,"prop":{},"outedges":[{"to":13}]},{"id":13,"prop":{"gender":"U"}},{"id":14,"rel":true,"hub":true,"prop":{},"outedges":[{"to":15}]},{"id":15,"chhub":true,"prop":{},"outedges":[{"to":16}]},{"id":16,"prop":{"gender":"U"}}];*/
 
-            var G = InternalGraph.init_from_user_graph(inputG, 10, 2);
+            var G = BaseGraph.init_from_user_graph(inputG, 10, 2);
 
-            processedGraph = draw_graph(G);
+            dynamicGraph = make_dynamic_positioned_graph(G);
 
-            display_controls('processedGraph', 'control', 'output');
+            display_controls('dynamicGraph', 'control', 'output');
 
-            display_processed_graph(processedGraph, 'output');
+            display_processed_graph(dynamicGraph, 'output');
         }
     </script>
 

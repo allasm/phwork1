@@ -50,13 +50,13 @@
                 { name :'p8', outedges: [ {to: 'E'} ], relationship: true }
             ];
 
-            var G = InternalGraph.init_from_user_graph(inputG, 10, 2);
+            var G = BaseGraph.init_from_user_graph(inputG, 10, 2);
 
             display_raw_graph(G, 'input');
 
-            var layoutG = draw_graph(G);
+            var dynamicG = make_dynamic_positioned_graph(G);
 
-            display_processed_graph(layoutG, 'output');
+            display_processed_graph(dynamicG, 'output');
         }
     </script>
 

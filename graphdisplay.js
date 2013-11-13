@@ -1,7 +1,8 @@
-function display_raw_graph(G, renderTo) {
+function display_raw_graph(G, comment, renderTo) {
     printObject(G);
     document.getElementById(renderTo).innerHTML =
         '<pre>'+
+        'comment:    ' + comment + '\n' +
         'edgesFromV: ' + stringifyObject(G.v) + '\n' +
         'weights:    ' + stringifyObject(G.weights) +'\n' +
         'properties: ' + stringifyObject(G.properties) + '\n</pre>';
@@ -254,15 +255,12 @@ function browserVisibleWidth(){
    return window.innerWidth||document.documentElement.clientWidth||document.body.clientWidth||0;
 }
 
-function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg) {
+function display_processed_graph(positionedGraph, renderTo, _debug, _comment) {
 
-    var DISPLAYDEBUG = false;
+    if (!_debug)
+        display_processed_graph(positionedGraph, renderTo, true, "raw graph");
 
-    positionedGraph.DG.displayDebug = true;
-    positionedGraph.DG.displayGraph(positionedGraph.DG.positions, "after improvement");
-    positionedGraph.DG.displayDebug = false;
-
-    //if (!debugPrint) printObject(renderPackage);
+    var DISPLAYDEBUG = _debug ? true : false;
 
     var G         = positionedGraph.DG.GG;
     var ranks     = positionedGraph.DG.ranks;
@@ -273,8 +271,7 @@ function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg
     var rankYraw  = positionedGraph.DG.rankY;
 
     var scale = { xscale: 4.0, yscale: 2.0, xshift: 5, yshift: 5, yLevelSize: 15, yInterLevelGap: 2, yExtraPerHorizontalLevel: 4 };
-
-    if (debugMsg) canvas.text(50,10,debugMsg);
+    if (_comment) scale.yshift += 20;
 
     // precompute Y coordinate for different ranks
     var rankYcoord = [0];
@@ -286,6 +283,7 @@ function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg
     var maxX = scale.xshift + (Math.max.apply(Math, positions) + Math.max.apply(Math, G.vWidth))*scale.xscale;
 
     var canvas = Raphael(renderTo, Math.max(browserVisibleWidth(), maxX), Math.max(100, maxY));
+    if (_comment) canvas.text(50,10,_comment);
 
     // rank 0 has removed virtual nodes
     for ( var r = 1; r < ordering.order.length; r++ ) {
@@ -390,8 +388,10 @@ function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg
                     drawRelationshipLine( canvas, scale, xprev, yprev, u_x, u_y, consangrRelationship );
                 }
 
-                //drawPersonBox( canvas, scale, x, y, width, G.getVertexNameById(v) + "/" + v.toString(), G.properties[v]["sex"]);
-                drawPersonBox( canvas, scale, x, y, width, v.toString() + "/" + positions[v].toString() , G.properties[v]["gender"]);
+                if (DISPLAYDEBUG)
+                    drawPersonBox( canvas, scale, x, y, width, v.toString() + "/" + positions[v].toString() , G.properties[v]["gender"]);
+                else
+                    drawPersonBox( canvas, scale, x, y, width, G.getVertexNameById(v), G.properties[v]["gender"]);
                 continue;
             }
         }
@@ -399,9 +399,10 @@ function display_processed_graph(positionedGraph, renderTo, debugPrint, debugMsg
 }
 
 
-// old version which does not make any assumptions about the structure (e.g. what is on what
-// rank, that relationship nodes ar eon the same rank with person nodes, etc) and thus
-// is good for debugging when certain parts of the algorithm are disabled
+// old crapy version which does not make any assumptions about the structure (e.g. what is
+// on what rank, that relationship nodes are on the same rank with person nodes, etc) and
+// does not need vertical positioning info...
+//  => and thus is good for debugging when certain parts of the algorithm are disabled
 function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debugMsg) {
 
     //if (!debugPrint) printObject(renderPackage);
@@ -480,11 +481,6 @@ function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debu
                     else {                                             // edge to the right
                         var line = canvas.path("M " + (5+rightX*xScale) + " " + (topY + 15) + " L " + (5+leftTargetX*xScale) + " " + (topY + 15));
                         line.attr({"stroke":stroke});
-                    }
-
-                    if (u > G.getMaxRealVertexId())
-                    {
-                        // TODO
                     }
                 }
                 else                         // edge below
