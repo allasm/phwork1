@@ -107,6 +107,12 @@ function showJSON (positionedGraph, redrawRenderTo) {
     return false;
 }
 
+function showRaw (positionedGraph, redrawRenderTo) {
+    var baseGraph = positionedGraph.DG.GG.makeGWithCollapsedMultiRankEdges();
+    console.log(stringifyObject(baseGraph.serialize()));
+    return false;
+}
+
 function fromJSON (positionedGraph, redrawRenderTo) {
     var msg = prompt("Enter graph representation:");
     console.log("Read: " + msg);
@@ -156,21 +162,13 @@ function display_controls(positionedGraph, controlRenderTo, redrawRenderTo) {
             nodeId: <input type=\"text\" style=\"width: 40px\" name=\"nodeid\" id=\"nodeid\" onkeyup=\"checkNodeId(this)\"/>\
             <button style=\"width: 150px\" type=\"submit\" id=\"submitRemove\">Remove Node</button>\
         </form>\
-        <form method=\"post\" action=\"\" onsubmit=\"return repositionAll(" + positionedGraph + ", " + str  + ")\">\
-            <button type=\"submit\" id=\"submitReposition\">Reposition all (change X coordinate, keep order)</button>\
-        </form>\
-        <form method=\"post\" action=\"\" onsubmit=\"return redrawAll(" + positionedGraph + ", " + str  + ")\">\
-            <button type=\"submit\" id=\"submitRedraw\">Redraw all (recompute layout)</button>\
-        </form>\
-        <form method=\"post\" action=\"\" onsubmit=\"return showJSON(" + positionedGraph + ", " + str  + ")\">\
-            <button type=\"submit\" id=\"submitJSON\">To JSON</button>\
-        </form>\
-        <form method=\"post\" action=\"\" onsubmit=\"return fromJSON(" + positionedGraph + ", " + str  + ")\">\
-            <button type=\"submit\" id=\"readJSON\">From JSON</button>\
-        </form>\
-        <form method=\"post\" action=\"\" onsubmit=\"return clearAll(" + positionedGraph + ", " + str  + ")\">\
-            <button type=\"submit\" id=\"clear\">Clear</button>\
-        </form>";
+        <button onclick=\"repositionAll(" + positionedGraph + ", " + str  + ")\" id=\"submitReposition\">Reposition all (change X coordinate, keep order)</button>\
+        <button onclick=\"redrawAll(" + positionedGraph + ", " + str  + ")\" id=\"submitRedraw\">Redraw all (recompute layout)</button>\
+        <br>\
+        <button onclick=\"showJSON(" + positionedGraph + ", " + str  + ")\" id=\"submitJSON\">To JSON</button>\
+        <button onclick=\"fromJSON(" + positionedGraph + ", " + str  + ")\" id=\"readJSON\">From JSON</button>\
+        <button onclick=\"showRaw(" + positionedGraph + ", " + str  + ")\" id=\"submitJSON\">Raw graph (for test case DB)</button>\
+        <button onclick=\"clearAll(" + positionedGraph + ", " + str  + ")\" id=\"clear\">Clear</button>";
 }
 
 
@@ -185,7 +183,7 @@ function drawNodeBox ( canvas, scale, x, scaledY, width, heightPercent, label ) 
     var text = canvas.text( scale.xshift + x*scale.xscale, scaledY + (scale.yLevelSize/2)*scale.yscale, label ).toFront();
 }
 
-function drawPersonBox ( canvas, scale, x, scaledY, width, label, sex ) {
+function drawPersonBox ( canvas, scale, x, scaledY, width, label, sex, lifeStatus ) {
     // x: middle of node
     // y: top of node
 
@@ -201,6 +199,12 @@ function drawPersonBox ( canvas, scale, x, scaledY, width, label, sex ) {
 
     var text = canvas.text( scale.xshift + x*scale.xscale, scaledY + (scale.yLevelSize/2)*scale.yscale, label ).toFront();
     //var text = canvas.text( scale.xshift + x*scale.xscale, scaledY + (scale.yLevelSize/2)*scale.yscale, x.toString() );
+
+    if (lifeStatus && lifeStatus == "deceased") {
+        var line = canvas.path("M " + (scale.xshift + (x - width/2)*scale.xscale) + " " + (scaledY + scale.yLevelSize * scale.yscale + 3) +
+                              " L " + (scale.xshift + (x + width/2)*scale.xscale) + " " + (scaledY - 3)).toFront();
+        line.attr({"stroke":"#000"});
+    }
 }
 
 function computeChildhubHorizontalY ( scale, scaledY, targetLevel ) {
@@ -391,7 +395,7 @@ function display_processed_graph(positionedGraph, renderTo, _debug, _comment) {
                 if (DISPLAYDEBUG)
                     drawPersonBox( canvas, scale, x, y, width, v.toString() + "/" + positions[v].toString() , G.properties[v]["gender"]);
                 else
-                    drawPersonBox( canvas, scale, x, y, width, G.getVertexNameById(v), G.properties[v]["gender"]);
+                    drawPersonBox( canvas, scale, x, y, width, G.getVertexNameById(v), G.properties[v]["gender"], G.properties[v]["lifeStatus"]);
                 continue;
             }
         }

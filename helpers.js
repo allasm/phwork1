@@ -107,7 +107,7 @@ function makeFlattened2DArrayCopy (array) {
 }
 
 function swap (array, i, j) {
-    var b = array[j];
+    var b    = array[j];
     array[j] = array[i];
     array[i] = b;
 }
@@ -181,8 +181,7 @@ function _printObjectInternal(o, level) {
     if (typeof o == 'object')
     {
 
-        if (Object.prototype.toString.call(o) === '[object Array]' ||
-            o instanceof Uint32Array)
+        if (Object.prototype.toString.call(o) === '[object Array]')
         {
             output = '[';
             for (var i = 0; i < o.length; i++) {
@@ -217,6 +216,10 @@ function _printObjectInternal(o, level) {
         output = ''+o;
 
     return output;
+}
+
+function padString (string, width, padding, onLeft) {
+    return (width <= string.length) ? string : padString( (onLeft ? (padding + string) : (string + padding)), width, padding, onLeft);
 }
 //-------------------------------------------------------------
 

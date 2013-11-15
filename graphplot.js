@@ -151,15 +151,14 @@ PositionedGraph.prototype = {
                                          //                    edges to v which were already assigned a rank
 
         for (var i = 0; i < baseG.getNumVertices(); i++) {
-            ranks.push(undefined);
+            ranks.push(-1);
             numRankedParents.push(0);
         }
 
         var parentlessNodes = baseG.getLeafAndParentlessNodes().parentlessNodes;
 
         var queue = new Queue();
-        for (var i = 0; i < parentlessNodes.length; i++ )
-            queue.push( parentlessNodes[i] );
+        queue.setTo(parentlessNodes);
 
         while ( queue.size() > 0 ) {
             var nextNode = queue.pop();
@@ -206,7 +205,7 @@ PositionedGraph.prototype = {
 
         // re-ranks all nodes as far down the tree as possible (e.g. people with no
         // parents in the tree should be on the same level as their first documented
-        // relationship partner)
+        // relationship partner, or as low as possible given their children relationships)
 
         // Algorithm:
         // 1. find disconnected components when multi-rank edges are removed (using "flood fill")
@@ -340,8 +339,10 @@ PositionedGraph.prototype = {
                 ranks[component[minComponent][v]] += (minOutEdgeLength[minComponent] - 1);
             }
 
-            console.log("Re-ranking ranks update: " + stringifyObject(ranks));
+            //console.log("Re-ranking ranks update: " + stringifyObject(ranks));
         }
+
+        console.log("Ranks after re-ranking: " + stringifyObject(ranks));
     },
     //============================================================================[rank]=
 
@@ -754,7 +755,7 @@ PositionedGraph.prototype = {
     reconnectTwins: function(disconnectedTwins)
     {
         var handled = {};
-        // TODO: improve this piece of code!! noneed to loop, we know what we want
+        // TODO: improve this piece of code!! no need to loop, we know what we want
         for (var v = 0; v <= this.GG.getMaxRealVertexId(); v++) {
             if (handled[v]) continue;
             if (!this.GG.isPerson(v)) continue;
@@ -1622,7 +1623,7 @@ PositionedGraph.prototype = {
                 if (this.order.vOrder[parents[0]] > this.order.vOrder[parents[1]])
                     parents.reverse();
 
-                console.log("NEED TO re-rank relatioship " + i + ", parents=" + stringifyObject(parents));
+                //console.log("NEED TO re-rank relatioship " + i + ", parents=" + stringifyObject(parents));
 
                 var rank = this.ranks[parents[0]];
 
@@ -1687,7 +1688,7 @@ PositionedGraph.prototype = {
                     if (this.GG.hasEdge(parents[1],leftOfParent1))
                         p1busy = true;
 
-                    console.log("p0busy: " + p0busy + ", p1busy: " + p1busy);
+                    //console.log("p0busy: " + p0busy + ", p1busy: " + p1busy);
 
                     if (p1busy && p0busy) {
                         // TODO: test this case
@@ -1732,13 +1733,14 @@ PositionedGraph.prototype = {
 
         this.removeRelationshipRanks();
 
+        // TODO
         // after re-ranking there may be some orderings which are equivalent in terms
         // of the number of edge crossings, but more or less visually pleasing
         // depending on what kinds of edges are crossing.
         // Until re-ordering is done it is computationally harder to make these tests,
         // but once reordering is complete it is easy
-        // (e.g: testcase 3A, relationship with both a parent and parent's child)
-        this.improveOrdering();
+        // (e.g: testcase 5A, relationship with both a parent and parent's child)
+        //this.improveOrdering();
 
         // after re-ordering long edges are shorter, try to improve long edge placement again
         var edgeCrossings = this.edge_crossing(this.order, false, true);
@@ -1796,10 +1798,11 @@ PositionedGraph.prototype = {
         }
     },
 
-    improveOrdering: function()
-    {
-        //...
-    },
+    // TODO
+    //improveOrdering: function()
+    //{
+    //    ...
+    //},
 
 
     //=====================================================================[re-ordering]=
@@ -2262,6 +2265,7 @@ PositionedGraph.prototype = {
 
     displayGraph: function(xcoord, message)
     {
+        TIME_DRAWING_DEBUG = 0;
         if (!DISPLAY_POSITIONING_DEBUG) return;
 
         var debugTimer = new Timer();
@@ -2813,9 +2817,9 @@ PositionedGraph.prototype = {
 //-------------------------------------------------------------
 
 var DISPLAY_POSITIONING_DEBUG = false;
-var TIME_DRAWING_DEBUG;
+var TIME_DRAWING_DEBUG        = 0;
 
-function make_dynamic_positioned_graph( inputG )
+function make_dynamic_positioned_graph( inputG, debugOutput )
 {
     var horizontalPersonSeparationDist = 10; // same relative units as in inputG.width fields. Min distance between two person nodes
     var horizontalRelSeparationDist    = 6;  // same relative units as in inputG.width fields. Min distance between a relationship node and other nodes
@@ -2828,7 +2832,10 @@ function make_dynamic_positioned_graph( inputG )
 
     var timer = new Timer();
 
-    DISPLAY_POSITIONING_DEBUG = true;
+    if (debugOutput)
+        DISPLAY_POSITIONING_DEBUG = true;
+    else
+        DISPLAY_POSITIONING_DEBUG = false;
     var drawGraph = new PositionedGraph( inputG,
                                          horizontalPersonSeparationDist,
                                          horizontalRelSeparationDist,

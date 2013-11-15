@@ -17,22 +17,183 @@
 
     <script type="text/javascript">
 
+        var timer = new Timer();
+
+        // for timing tests
+        var referenceTestCase          = "5d";
+        var thisSystemToReferenceRatio = undefined;   // performnance difference on the reference test case
+        var numTimingRuns              = 10;          // for each run slowest and fastest will be excluded
+
         function showTestCase( testCaseData )
         {
             var G = BaseGraph.init_from_user_graph(testCaseData.graph, 10, 2);
 
             display_raw_graph(G, testCaseData.comment, 'input');
 
-            var timer = new Timer();
-            var dynamicG = make_dynamic_positioned_graph(G);
+            timer.restart();
+            var dynamicG = make_dynamic_positioned_graph(G, true);  // true: display intermediate steps
             var elapsed = timer.report();
 
             display_processed_graph(dynamicG, 'output');
 
-            console.log("Expected run time (excluding display time) in Firefox v23 on Core2 @ 2.8Ghz: " + testCaseData.runTime + "ms");
+            console.log("Average run time (excluding display time) in Firefox v23 on Core2 @ 2.8Ghz: " + testCaseData.runTime.average + "ms, best run time: " + testCaseData.runTime.best);
             console.log("Run time (excluding display time) on this machine: " + (elapsed - TIME_DRAWING_DEBUG) + "ms");
 
             //automatedCheck(dynamicG, testCaseData.validate);
+        }
+
+        function runTimingTest()
+        {
+            var testCase = document.getElementById("selectTest").value;
+
+            runReferenceTiming();
+
+            alert("Press to start timing test for " + testCase + "... (may take up to 5 seconds)");
+
+            var result = runOneSpeedTest( testCase, true );
+
+            var thisSystemSpeed = result.best;
+            var referenceTime   = testCaseDatabase[testCase].runTime.best;
+            var expectedTime    = (referenceTime / thisSystemToReferenceRatio);
+
+            var slack = Math.round(expectedTime*0.1 + 1.5);
+            var color = (thisSystemSpeed <= expectedTime + slack) ? "green" : ( (thisSystemSpeed <= expectedTime + slack * 2 ) ? "orange" : "red" );
+
+            var reportString = "<br><br>Best run time: <font color=" + color + ">" + thisSystemSpeed + "</font> ms, " +
+                               "expected: " + Math.round(expectedTime) + " ms ( +/- " + slack + " ms)<br>" +
+                               "(expected based on reference time of " + referenceTime + " ms and this system relative performance factor " + thisSystemToReferenceRatio + ")";
+
+            reportString += '<br><br>Report by run:<br><pre>';
+
+            var minTime = Math.min.apply(null, result.timings);
+            for (var i = 0; i < result.timings.length; i++) {
+                reportString += "Run #" + i + ": " + result.timings[i] + "ms" + ( (result.timings[i] == minTime) ? " (best)" : "") + "\n";
+            }
+
+            reportString += "</pre>(average run time: " + result.average + " ms)";
+
+            document.getElementById("output").innerHTML = reportString;
+        }
+
+        function runAllTimingTests()
+        {
+            console.log("Running all timing tests");
+
+            document.getElementById("input").innerHTML  = "";
+            document.getElementById("output").innerHTML = "";
+
+            runReferenceTiming();
+
+            alert("Press to start all timing tests... (may take a few minutes)");
+
+            var results = [];
+
+            for (var testCase in testCaseDatabase) {
+                if (testCaseDatabase.hasOwnProperty(testCase)) {
+
+                  var oneRun = runOneSpeedTest( testCase );
+
+                  var referenceForThisCase = testCaseDatabase[testCase].runTime.best;
+                  var expected             = referenceForThisCase / thisSystemToReferenceRatio;
+
+                  results.push( { "name"      : testCase,
+                                  "best"      : oneRun.best,
+                                  "average"   : oneRun.average,
+                                  "refSystem" : referenceForThisCase,
+                                  "expected"  : Math.round(expected),
+                                  "slack"     : Math.round(expected*0.1 + 1.5) } );
+                }
+            }
+
+            var reportString = "<br><br>Speed of this machine compared to reference testbed (Firefox v23 @ Core2Duo @ 2.8Ghz): " + thisSystemToReferenceRatio +
+            "<br><br><div style=\"white-space: pre;\"><font face=\"courier new, monospace\">" +
+            "  Test case        |  best time  |  expected   |  average time\n" +
+            " ------------------+-------------+-------------+---------------\n";
+            for (var i = 0; i < results.length; i++ ) {
+                var testCase = results[i];
+                var maxExpected = testCase.expected + testCase.slack;
+                var diff        = testCase.best - maxExpected;
+                if (diff < 0) diff = 0;
+                reportString += " " + padString( testCase.name, 18, " " ) + "|  ";
+
+                if (diff > 0)
+                    if (diff > testCase.slack)
+                        reportString += "<font color=red>";
+                    else
+                        reportString += "<font color=orange>";
+                else
+                    reportString += "<font color=green>";
+                reportString += padString( testCase.best, 6, " ", true ) + "</font> ms  | ";
+
+                reportString += padString( testCase.expected, 6, " ", true ) + " ms   |  " +
+                                padString( testCase.average, 6, " ", true) + " ms\n";
+            }
+            reportString += "</font></div>";
+
+            document.getElementById("output").innerHTML = reportString;
+        }
+
+        function runReferenceTiming()
+        {
+            if (!thisSystemToReferenceRatio) {
+                alert("Press to start system speed calibration... (may take up to 5 seconds)");
+
+                var timingRun = runOneSpeedTest(referenceTestCase);
+
+                thisSystemToReferenceRatio = testCaseDatabase[referenceTestCase].runTime.best / timingRun.best;
+
+                thisSystemToReferenceRatio = Math.round( thisSystemToReferenceRatio * 10 ) / 10;
+            }
+        }
+
+        function runOneSpeedTest( testCase, _reportTimings )
+        {
+            var testCaseData   = testCaseDatabase[testCase];
+
+            var G = BaseGraph.init_from_user_graph(testCaseData.graph, 10, 2);
+
+            console.log("Performing " + numTimingRuns + " or more layout computations for test case " + testCase);
+
+            // disable console output
+            window.consoleBak = window.console;
+            window.console = { log: function() {} };
+            var numRunsForThisCase = numTimingRuns;
+
+            var timings = [];
+
+            for (var i = 0; i < numRunsForThisCase; i++) {
+
+                timer.restart();
+                var dynamicG = make_dynamic_positioned_graph(G, false);
+                var thisTime = timer.report() - TIME_DRAWING_DEBUG;
+
+                timings.push(thisTime);
+
+                // test more for quick cases
+                if ( thisTime < 10 )
+                    numRunsForThisCase = numTimingRuns*4;
+                if ( numTimingRuns < numTimingRuns*3 && thisTime < 15 )
+                    numRunsForThisCase = numTimingRuns*3;
+                if ( numTimingRuns < numTimingRuns*2 && thisTime < 25 )
+                    numRunsForThisCase = numTimingRuns*2;
+
+                delete dynamicG;
+            }
+            // reenable console
+            window.console = window.consoleBak;
+
+            var minTime = Math.min.apply(null, timings);
+            var avgTime = 0;
+            for (var i = 0; i < timings.length; i++) {
+                console.log("Run #" + i + ": " + timings[i] + "ms" + ( (timings[i] == minTime) ? " (best)" : ""));
+                avgTime += timings[i];
+            }
+            avgTime /= timings.length;
+
+            if (_reportTimings)
+                return { "best": minTime, "average": Math.ceil(avgTime), "timings": timings };
+
+            return { "best": minTime, "average": Math.ceil(avgTime) };
         }
 
         function showSelectedTestCase()
@@ -57,7 +218,9 @@
                   generatedHTML += "<option value=\"" + testCase + "\">TestCase " + testCase + "</option>";
                 }
 
-            generatedHTML += "</select>";
+            generatedHTML += "</select>&nbsp;<button onclick=\"runTimingTest()\" type=\"button\">Run timing tests</button>";
+            generatedHTML += " &nbsp;&nbsp;&nbsp;&nbsp; <button onclick=\"runAllTimingTests()\" type=\"button\">Run all timing tests</button>";
+            generatedHTML += "&nbsp;<button onclick=\"runAllTimingTests()\" type=\"button\">Run all verifications</button>";
 
             document.getElementById("testcaseSelector").innerHTML = generatedHTML;
 
