@@ -278,22 +278,35 @@ DynamicPositionedGraph.prototype = {
     {
         // all person nodes which are not ancestors of v and which do not already have parents
         var result = [];
-
         for (var i = 0; i <= this.DG.GG.getMaxRealVertexId(); i++) {
            if (!this.isPerson(i)) continue;
            if (this.DG.GG.inedges[i].length != 0) continue;
            if (this.DG.ancestors[v].hasOwnProperty(i)) continue;
            result.push(i);
         }
-
         return result;
+    },
+    
+    getPossibleSiblingsOf: function( v )
+    {
+        // all person nodes which are not ancestors and not descendants
+        // if v has parents only nodes without parents are returned
+        var hasParents = (this.getParentRelationship(v) !== null);
+        var result = [];
+        for (var i = 0; i <= this.DG.GG.getMaxRealVertexId(); i++) {
+           if (!this.isPerson(i)) continue;
+           if (this.DG.ancestors[v].hasOwnProperty(i)) continue;
+           if (this.DG.ancestors[i].hasOwnProperty(v)) continue;
+           if (hasParents && this.DG.GG.inedges[i].length != 0) continue;           
+           result.push(i);
+        }
+        return result;        
     },
 
     getPossibleParentsOf: function( v )
     {
         // all person nodes which are not descendants of source node
         var result = [];
-
         //console.log("Ancestors: " + stringifyObject(this.DG.ancestors));
         for (var i = 0; i <= this.DG.GG.getMaxRealVertexId(); i++) {
            if (!this.isRelationship(i) && !this.isPerson(i)) continue;
@@ -301,7 +314,6 @@ DynamicPositionedGraph.prototype = {
            if (this.DG.ancestors[i].hasOwnProperty(v)) continue;
            result.push(i);
         }
-
         return result;
     },
 
