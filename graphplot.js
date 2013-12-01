@@ -39,7 +39,7 @@ PositionedGraph.prototype = {
     horizontalPersonSeparationDist: 10,
     horizontalTwinSeparationDist:    8,
     horizontalRelSeparationDist:     6,
-    yDistanceNodeToChildhub:        18,
+    yDistanceNodeToChildhub:        16,
     yDistanceChildhubToNode:        16,
     yExtraPerHorizontalLine:         4,
 
@@ -754,46 +754,41 @@ PositionedGraph.prototype = {
 
     reconnectTwins: function(disconnectedTwins)
     {
-        var handled = {};
-        // TODO: improve this piece of code!! no need to loop, we know what we want
-        for (var v = 0; v <= this.GG.getMaxRealVertexId(); v++) {
-            if (handled[v]) continue;
-            if (!this.GG.isPerson(v)) continue;
-            var twinGroupId = this.GG.getTwinGroupId(v);
-            if (twinGroupId == null) continue;
+        for (var v in disconnectedTwins) {
+            if (disconnectedTwins.hasOwnProperty(v)) {
 
-            var rank = this.ranks[v];
+                var rank = this.ranks[v];
 
-            var childhub = this.GG.getInEdges(v)[0];
-            var allDisconnectedTwins = disconnectedTwins[v];
+                var childhub = this.GG.getInEdges(v)[0];
 
-            for (var i = 0; i < allDisconnectedTwins.length; i++) {
-                var twin = allDisconnectedTwins[i];
+                var allDisconnectedTwins = disconnectedTwins[v];
 
-                // 1) remove outedges which actually belong to twin from v (needed for next step)
-                // 2) find the position to reinsert the twin & insert it
-                // 3) restore connection from childhub to twin
-                // 4) restore in-edges for all nodes twin connects to to twin
+                for (var i = 0; i < allDisconnectedTwins.length; i++) {
+                    var twin = allDisconnectedTwins[i];
 
-                //1
-                for (var j = 0; j < this.GG.getOutEdges(twin).length; j++) {
-                    var rel = this.GG.getOutEdges(twin)[j];
-                    removeFirstOccurrenceByValue(this.GG.inedges[rel], v);
-                    removeFirstOccurrenceByValue(this.GG.v[v], rel);
-                    delete this.GG.weights[v][rel];
+                    // 1) remove outedges which actually belong to twin from v (needed for next step)
+                    // 2) find the position to reinsert the twin & insert it
+                    // 3) restore connection from childhub to twin
+                    // 4) restore in-edges for all nodes twin connects to to twin
+
+                    //1
+                    for (var j = 0; j < this.GG.getOutEdges(twin).length; j++) {
+                        var rel = this.GG.getOutEdges(twin)[j];
+                        removeFirstOccurrenceByValue(this.GG.inedges[rel], v);
+                        removeFirstOccurrenceByValue(this.GG.v[v], rel);
+                        delete this.GG.weights[v][rel];
+                    }
+                    //2
+                    var insertOrder = this.findBestTwinInsertPosition(twin, this.GG.getOutEdges(twin), this.order);
+                    this.order.insert(rank, insertOrder, twin);
+                    //3 + 4
+                    this.GG.v[childhub].push(twin);
+                    var outEdges = this.GG.getOutEdges(twin);
+                    for (var j = 0; j < outEdges.length; j++) {
+                        var rel = outEdges[j];
+                        this.GG.inedges[rel].push(twin);
+                    }
                 }
-                //2
-                var insertOrder = this.findBestTwinInsertPosition(twin, this.GG.getOutEdges(twin), this.order);
-                this.order.insert(rank, insertOrder, twin);
-                //3 + 4
-                this.GG.v[childhub].push(twin);
-                var outEdges = this.GG.getOutEdges(twin);
-                for (var j = 0; j < outEdges.length; j++) {
-                    var rel = outEdges[j];
-                    this.GG.inedges[rel].push(twin);
-                }
-
-                handled[twin] = true;
             }
         }
     },
@@ -824,40 +819,38 @@ PositionedGraph.prototype = {
             }
         }
 
-        var nextBucket = 0;
         for (var i = 0; i < leafAndRootlessInfo.parentlessNodes.length; i++) {
             var v = leafAndRootlessInfo.parentlessNodes[i];
 
             if (handled.hasOwnProperty(v)) continue;
 
-            if (buckets.length <= nextBucket) // first node in this bucket
-                buckets.push( [] );
+            var nextBucket = [];
 
-            buckets[nextBucket].push(v);
+            nextBucket.push(v);
             handled[v] = true;
 
-            // TODO: simplify the next piece of code, no need to loop over all!!!
+            // essy grouping: place parents which are only connected to the same relationship in the same bucket
             if ( this.GG.getOutEdges(v).length == 1 ) {
-                // find all nodes which are only connected to a relationship with V
-                for (var j = i+1; j < leafAndRootlessInfo.parentlessNodes.length; j++) {
-                    var u = leafAndRootlessInfo.parentlessNodes[j];
-                    if (handled.hasOwnProperty(u)) continue;
-                    if ( this.GG.getOutEdges(u).length == 1 ) {
-                        var relationshipNode = this.GG.getOutEdges(u)[0];
-                        var parents = this.GG.getInEdges(relationshipNode);
-                        if (parents[0] == v || parents[1] == v)
-                        {
-                            buckets[nextBucket].push(u);
-                            handled[u] = true;
-                        }
-                    }
+                var rel     = this.GG.getOutEdges(v)[0];
+                var parents = this.GG.getInEdges(rel);
+
+                var otherPartner = (parents[0] == v) ? parents[1] : parents[0];
+
+                if (!handled.hasOwnProperty(otherPartner)
+                    && this.GG.getInEdges (otherPartner).length == 0
+                    && this.GG.getOutEdges(otherPartner).length == 1) {   // the other partner has no parents && only this relationhsip
+                    nextBucket.push(otherPartner);
+                    handled[otherPartner] = true;
                 }
             }
 
-            nextBucket++;
-            if (nextBucket >= maxInitOrderingBuckets)   // TODO: activate the mode when a bucket which has more related nodes in it will be picked for each next node?
-                nextBucket = 0;
+            buckets.push(nextBucket);
         }
+
+        // if number of buckets is large, merge some (closely related) buckets
+        // until the number of buckets is no more than the specified maximum
+        if (buckets.length > maxInitOrderingBuckets)
+            this.mergeBucketsUntilNoMoreThanGivenLeft(buckets, maxInitOrderingBuckets);
 
         var permutations = [];
 
@@ -905,10 +898,9 @@ PositionedGraph.prototype = {
 
             if (handled.hasOwnProperty(v)) continue;
 
-            if (buckets.length <= nextBucket) // first node in this bucket
-                buckets.push( [] );
+            var nextBucket = [];
 
-            buckets[nextBucket].push(v);
+            nextBucket.push(v);
             handled[v] = true;
 
             if ( this.GG.getInEdges(v).length != 1 )
@@ -929,10 +921,13 @@ PositionedGraph.prototype = {
                 }
             }
 
-            nextBucket++;
-            if (nextBucket >= maxInitOrderingBuckets)
-                nextBucket = 0; // TODO: pick a bucket with the smallest number of nodes in it
+            buckets.push(nextBucket);
         }
+
+        // if number of buckets is large, merge some (closely related) buckets
+        // until the number of buckets is no more than the specified maximum
+        if (buckets.length > maxInitOrderingBuckets)
+            this.mergeBucketsUntilNoMoreThanGivenLeft(buckets, maxInitOrderingBuckets, true /* use in-edges when computing closeness */);
 
         var permutations = [];
 
@@ -943,6 +938,123 @@ PositionedGraph.prototype = {
         console.log("Found " + permutations.length + " permutations of leaf nodes");
 
         return permutations;
+    },
+
+    mergeBucketsUntilNoMoreThanGivenLeft: function(buckets, maxInitOrderingBuckets, useInEdges)
+    {
+        console.log("original buckets: " + stringifyObject(buckets));
+
+        while (buckets.length > maxInitOrderingBuckets && this.mergeMostRelatedBuckets(buckets, useInEdges));
+
+        console.log("merged buckets: " + stringifyObject(buckets));
+    },
+
+    mergeMostRelatedBuckets: function(buckets, useInEdges)
+    {
+        // 1. find two most related buckets
+        // 2. merge the buckets
+
+        //console.log("original buckets: " + stringifyObject(buckets));
+
+        var minDistance = Infinity;
+        var bucket1     = 0;
+        var bucket2     = 0;
+
+        var timer = new Timer();
+
+        for (var i = 0; i < buckets.length - 1; i++)
+            for (var j = i + 1; j < buckets.length; j++)  {
+                var dist = this.findDistanceBetweenBuckets( buckets[i], buckets[j], useInEdges );
+
+                //console.log("distance between buckets " + i + " and " + j + " is " + dist);
+
+                // pick most closely related buckets for merging. Break ties by bucket size (prefer smaller resulting buckets)
+                if (dist < minDistance ||
+                    (dist == minDistance && buckets[i].length + buckets[j].length < buckets[bucket1].length + buckets[bucket2].length) ) {
+                    minDistance = dist;
+                    bucket1     = i;
+                    bucket2     = j;
+                }
+            }
+
+        timer.printSinceLast("Compute distance between buckets: ");
+
+        if (minDistance == Infinity)
+            return false; // all buckets are unrelated. In theory should not happen
+
+        // merge all items from bucket1 into bucket2
+        for (var i = 0; i < buckets[bucket2].length; i++) {
+            buckets[bucket1].push(buckets[bucket2][i]);
+        }
+
+        buckets.splice(bucket2,1);  // remove bucket2
+
+        //console.log("merged buckets: " + stringifyObject(buckets));
+
+        return true; // was able to merge some buckets
+    },
+
+    findDistanceBetweenBuckets: function(bucket1nodes, bucket2nodes, useInEdges)
+    {
+        // only looks for common relatives in one direction: using inEdges iff useInEdges and outEdges otherwise
+        var distance = [];
+
+        for (var i = 0; i < bucket1nodes.length; i++)
+            distance[bucket1nodes[i]] = 1;
+        for (var i = 0; i < bucket2nodes.length; i++)
+            distance[bucket2nodes[i]] = -1;
+
+        var queue1 = new Queue();
+        queue1.setTo(bucket1nodes);
+
+        var queue2 = new Queue();
+        queue2.setTo(bucket2nodes);
+
+        var iter = 0;  // safeguard against infinite loop
+        while(iter < 100) {
+            iter++;
+
+            if (queue1.size() == 0 && queue2.size() == 0)
+                return Infinity;       // buckets are not related/not mergeable
+
+            var nextQueue1 = new Queue();
+            while (queue1.size() > 0){
+                var nextNode = queue1.pop();
+
+                var dist = distance[nextNode];
+
+                var edges = useInEdges ? this.GG.getInEdges(nextNode) : this.GG.getOutEdges(nextNode);
+
+                for (var j = 0; j < edges.length; j++) {
+                    var nextV = edges[j];
+                    if (distance[nextV] < 0)
+                        return -distance[nextV] + dist;   // actually distance is (return_value - 1), but it does not matter for this algorithm
+                    distance[nextV] = dist + 1;
+                    nextQueue1.push(nextV);
+                }
+            }
+            queue1 = nextQueue1;
+
+            var nextQueue2 = new Queue();
+            while (queue2.size() > 0){
+                var nextNode = queue2.pop();
+
+                var dist = distance[nextNode];  // a negative number for nodes in queue2
+
+                var edges = useInEdges ? this.GG.getInEdges(nextNode) : this.GG.getOutEdges(nextNode);
+
+                for (var j = 0; j < edges.length; j++) {
+                    var nextV = edges[j];
+                    if (distance[nextV] > 0)
+                        return distance[nextV] - dist;
+                    distance[nextV] = dist - 1;
+                    nextQueue2.push(nextV);
+                }
+            }
+            queue2 = nextQueue2;
+        }
+
+        throw "Assertion failed: possible loop detected";
     },
 
     init_order_top_to_bottom: function (parentlessNodes, useStack)
@@ -1368,13 +1480,14 @@ PositionedGraph.prototype = {
 
         var totalEdgeCrossings = this.edge_crossing(order);
         if (stopIfMoreThanCrossings && totalEdgeCrossings > stopIfMoreThanCrossings) return;
-        //console.log("Total crossings: " + totalEdgeCrossings);
 
         var iter = 0;
         while( improved )
         {
             iter++;
             if (!doMinorImprovements && iter > 4) break;
+
+            if (iter > 100) { console.log("Assertion failed: too many iterations in transpose(), NumIter == " + iter); break; }
 
             improved = false;
 
@@ -1388,12 +1501,11 @@ PositionedGraph.prototype = {
                     var byRelOrder = function(a,b) {
                            var rel1 = GG.getInEdges(a)[0];
                            var rel2 = GG.getInEdges(b)[0];
-
-                           return (order.vOrder[rel1] > order.vOrder[rel2]);
+                           return order.vOrder[rel1] - order.vOrder[rel2];
                         }
                     order.order[r].sort(byRelOrder);
 
-                    for (var i = 0; i <= order.order[r].length; i++)
+                    for (var i = 0; i < order.order[r].length; i++)
                         order.vOrder[ order.order[r][i] ] = i;
 
                     continue;
@@ -1418,6 +1530,7 @@ PositionedGraph.prototype = {
                     var v2 = order.order[r][i+1];
 
                     //if (v1 == 12 && v2 == 20)
+                    //if (!doMinorImprovements)
                     //    console.log("trying: " + v1 + "  <-> " + v2);
 
                     order.exchange(r, i, i+1);
@@ -1578,7 +1691,7 @@ PositionedGraph.prototype = {
 
         //console.log("GG: "  + stringifyObject(this.GG));
 
-        if (this.maxRank === undefined) return;
+        if (this.maxRank === undefined || this.GG.v.length == 0) return;
 
         var handled = {};
 
