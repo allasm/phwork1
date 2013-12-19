@@ -85,7 +85,7 @@ function removeNode (positionedGraph, redrawRenderTo) {
 }
 
 function repositionAll (positionedGraph, redrawRenderTo) {
-    positionedGraph.repositionAll();
+    positionedGraph.improvePosition();
     display_processed_graph(positionedGraph, redrawRenderTo);
     return false;
 }
@@ -273,6 +273,12 @@ function display_processed_graph(positionedGraph, renderTo, _debug, _comment) {
     var consangr  = positionedGraph.DG.consangr;
     var vertLevel = positionedGraph.DG.vertLevel;
     var rankYraw  = positionedGraph.DG.rankY;
+
+    console.log("positions: " + stringifyObject(positions));
+    var xcoord = new XCoord(positions,positionedGraph.DG);
+    xcoord.normalize();
+    positions = xcoord.xcoord;
+    console.log("positions: " + stringifyObject(positions));
 
     var scale = { xscale: 4.0, yscale: 2.0, xshift: 5, yshift: 5, yLevelSize: 15, yInterLevelGap: 2, yExtraPerHorizontalLevel: 4 };
     if (_comment) scale.yshift += 20;

@@ -137,7 +137,7 @@ BaseGraph.init_from_user_graph = function(inputG, defaultPersonNodeWidth, defaul
                 var target   = nextV.outedges[outE].to;
                 var targetID = nameToId[target] ? nameToId[target] : target;  // can specify target either by name or ID
 
-                if (!isInt(target) || !newG.isValidId(targetID))
+                if (!newG.isValidId(targetID))
                     throw "Invalid input: invalid edge target (" + target + ")";
 
                 var weight = 1;
@@ -666,13 +666,13 @@ BaseGraph.prototype = {
 	    return (this.type[v] == TYPE.CHILDHUB);
 	},
 
-	isPerson: function(v) {
-	    return (this.type[v] == TYPE.PERSON);
-	},
+    isPerson: function(v) {
+        return (this.type[v] == TYPE.PERSON);
+    },
 
-	isVirtual: function(v) {
+    isVirtual: function(v) {
         return (this.type[v] == TYPE.VIRTUALEDGE);  // also: v > getmaxRealVertexId()
-	},
+    },
 
     isAdopted: function(v)
     {
@@ -683,7 +683,7 @@ BaseGraph.prototype = {
 
     getOppositeGender: function(v) {
         if (!this.isPerson(v))
-	        throw "Assertion failed: attempting to get gender of a non-person";
+            throw "Assertion failed: attempting to get gender of a non-person";
 
         if (this.properties[v]["gender"] == "U") {
             return "U";
@@ -987,7 +987,7 @@ Ordering.prototype = {
     moveVertexToOrder: function ( rank, oldOrder, newOrder ) {
         // changes vertex order within the same rank. Insertion happens right before the node currently occupying the newOrder position
         // (i.e. changing order form 3 to 4 does nothing, as before position 4 is still position 3)
-        var shiftAmount = newOrder - oldOrder;
+        var shiftAmount = (newOrder <= oldOrder) ? (newOrder - oldOrder) : (newOrder - oldOrder - 1);
         this.move( rank, oldOrder, shiftAmount );
 	},
 
