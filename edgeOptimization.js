@@ -5,11 +5,18 @@
 // TODO: test performance: this.pairScoreFunc() is called for all possible combinations of (i,j,level_i,level_j)
 //                         during computeCrosses(). Store the values and avoid calling the function again?
 
-VerticalPosIntOptimizer = function ( pairScoreFunc, initLevels ) {
-    this.pairScoreFunc = pairScoreFunc;         // function(u, v, uLev, vLev) - returns penalty for interaction between two edges u and v when u's level is uLev and v's level is vLev
+VerticalPosIntOptimizer = function ( pairScoreFunc, initLevels, minLevels ) {
+    this.pairScoreFunc = pairScoreFunc;      // function(u, v, uLev, vLev) - returns penalty for interaction between two edges u and v when u's level is uLev and v's level is vLev
 
-    this.initLevels    = initLevels;            // array[int]
-    this.numEdges      = initLevels.length;     // int
+    this.initLevels = initLevels;            // array[int]
+    this.numEdges   = initLevels.length;     // int
+
+    this.maxOfMinlevels = 1;
+    if (minLevels) {
+        this.maxOfMinlevels = Math.max.apply(null, minLevels);
+        if (this.maxOfMinlevels > 1)
+            this.minLevels = minLevels;
+    }
 
     var precompute          = this.computeCrosses();
     this.minPossiblePenalty = precompute.minPossiblePenalty; // int               - the minimum possible penalty (the sum of minimum penalties for each edge pair)
@@ -175,7 +182,15 @@ VerticalPosIntOptimizer.prototype = {
         // TODO: exclude assignments where two intersecting edges have the same level. Only consider edges
         //       with lover IDs since those are already assigned a value. Edges with higher ids haveno assignment yet
 
-        for (var i = 1; i <= this.edgesThatCross.length; i++ ) {
+        var minValue = 1;
+        var maxValue = this.edgesThatCross.length;
+
+        if (this.minLevels)
+            minValue = this.minLevels[edge];
+        if (this.minLevels)
+            maxValue++;
+
+        for (var i = minValue; i <= maxValue; i++ ) {
             valuesSoFar[edge] = i;
 
             bestSoFar = this.recursiveExhaustiveSearch( valuesSoFar, level+1, bestSoFar );
@@ -264,10 +279,10 @@ VerticalPosIntOptimizer.prototype = {
     normalize: function( levels ) {
         //console.log("pre-normalized levels: " + stringifyObject(levels));
 
-        // 1. normalize so that the smallest used level is 1
+        // 1. normalize so that the smallest used level is this.maxOfMinlevels
         var minUsedLevel = Math.min.apply(null, levels);
-        if (minUsedLevel != 1) {
-            var increment = 1 - minUsedLevel;
+        if (minUsedLevel != this.maxOfMinlevels) {
+            var increment = this.maxOfMinlevels - minUsedLevel;
             for (var i = 0; i < this.edgesThatCross.length; i++)
                 levels[this.edgesThatCross[i]] += increment;
         }
@@ -284,7 +299,7 @@ VerticalPosIntOptimizer.prototype = {
             }
         }
 
-        // 3. notmalize so that make the lowest edge in overlapping stack has rank 1
+        // 3. normalize so that the lowest edge in each overlapping stack has rank 1
         do {
             var changed = false;
             for (var i = 0; i < this.edgesThatCross.length; i++) {

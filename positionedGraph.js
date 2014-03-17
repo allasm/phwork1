@@ -2184,7 +2184,7 @@ PositionedGraph.prototype = {
 
             var len = this.order.order[r].length;
             for (var i = 0; i < len; i++) {
-                var v   = this.order.order[r][i];
+                var v = this.order.order[r][i];
 
                 if (this.GG.isVirtual(v)) continue;
                 if (!this.GG.isChildhub(v)) throw "Assertion failed: childhub nodes at every other rank ("+v+")";
@@ -2231,32 +2231,27 @@ PositionedGraph.prototype = {
 
                 if (edge1level == edge2level) return Infinity;              // intersect and at the same level => forbidden => (penalty == Infinity)
 
-                var penalty = 0;
-
-                // compute number of intersections
-                if (edge1level < edge2level) {
-                    // potentially childhub-to-horizontal segment of edge2 may cross horizontal segment of edge1
-                    if (edgeInfo[edge2].top_x >= edgeInfo[edge1].left_x && edgeInfo[edge2].top_x <= edgeInfo[edge1].right_x)
-                        penalty++;
-                    // potentially horizontal-to-child vertical lines of edge1 may cross horizontal segment of edge2
-                    for (var j = 0; j < edgeInfo[edge1].childCoords.length; j++) {
-                        var childX = edgeInfo[edge1].childCoords[j];
-                        if (childX >= edgeInfo[edge2].left_x && childX <= edgeInfo[edge2].right_x)
-                            penalty++;
-                    }
-                } else {
-                    // potentially childhub-to-horizontal segment of edge1 may cross horizontal segment of edge2
-                    if (edgeInfo[edge1].top_x >= edgeInfo[edge2].left_x && edgeInfo[edge1].top_x <= edgeInfo[edge2].right_x)
-                        penalty++;
-                    // potentially horizontal-to-child vertical lines of edge2 may cross horizontal segment of edge1
-                    for (var j = 0; j < edgeInfo[edge2].childCoords.length; j++) {
-                        var childX = edgeInfo[edge2].childCoords[j];
-                        if (childX >= edgeInfo[edge1].left_x && childX <= edgeInfo[edge1].right_x)
-                            penalty++;
-                    }
+                if (edge1level > edge2level) {
+                    var tmpEdge  = edge1;
+                    var tmpLevel = edge1level;
+                    edge1        = edge2;
+                    edge1level   = edge2level;
+                    edge2        = tmpEdge;
+                    edge2level   = tmpLevel;
                 }
 
-                return penalty;
+                // compute number of intersections
+                var intersections = 0;
+                // potentially childhub-to-horizontal segment of edge2 may cross horizontal segment of edge1
+                if (edgeInfo[edge2].top_x >= edgeInfo[edge1].left_x && edgeInfo[edge2].top_x <= edgeInfo[edge1].right_x)
+                    intersections++;
+                // potentially horizontal-to-child vertical lines of edge1 may cross horizontal segment of edge2
+                for (var j = 0; j < edgeInfo[edge1].childCoords.length; j++) {
+                    var childX = edgeInfo[edge1].childCoords[j];
+                    if (childX >= edgeInfo[edge2].left_x && childX <= edgeInfo[edge2].right_x)
+                        intersections++;
+                }
+                return intersections;
             };
 
             var optimizer = new VerticalPosIntOptimizer( pairScoreFunc, initLevels );
@@ -2278,7 +2273,6 @@ PositionedGraph.prototype = {
                     verticalLevels.rankVerticalLevels[r] = edgeLevels[v];
             }
         }
-
 
         // 2) vertical positioning of person-relationship edges:
         for (var r = 1; r <= this.maxRank; r++) {
@@ -2331,7 +2325,7 @@ PositionedGraph.prototype = {
                             for (var o = vOrder[v] + 1; o < vOrder[rightEdges[k]]; o++) {
                                 // there are non-virtual vertices between the node and it's relationship - need to draw the line above the nodes
                                 var w = this.order.order[r][o];
-                                if (!this.GG.isVirtual(w)) { nextVerticalR = 1; break; }
+                                if (!this.GG.isVirtual(w) && !this.GG.isRelationship(w) ) { nextVerticalR = 1; break; }
                             }
                         }
 
@@ -2350,7 +2344,6 @@ PositionedGraph.prototype = {
             }
         }
         console.log("Vert pos: " + stringifyObject(verticalLevels.outEdgeVerticalLevel));
-
 
         return verticalLevels;
     },

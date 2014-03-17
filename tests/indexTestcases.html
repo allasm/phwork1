@@ -20,6 +20,7 @@
     <script type="text/javascript">
 
         var timer = new Timer();
+        var fakeConsole = { log: function() {} };
 
         // for timing tests
         var referenceTestCase          = "5d";
@@ -158,7 +159,7 @@
 
             // disable console output
             window.consoleBak = window.console;
-            window.console = { log: function() {} };
+            window.console = fakeConsole; //{ log: function() {} };
             var numRunsForThisCase = numTimingRuns;
 
             var timings = [];
@@ -178,8 +179,6 @@
                     numRunsForThisCase = numTimingRuns*3;
                 if ( numTimingRuns < numTimingRuns*2 && thisTime < 25 )
                     numRunsForThisCase = numTimingRuns*2;
-
-                delete dynamicG;
             }
             // reenable console
             window.console = window.consoleBak;
