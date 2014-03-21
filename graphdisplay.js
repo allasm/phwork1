@@ -280,7 +280,7 @@ function display_processed_graph(positionedGraph, renderTo, _debug, _comment) {
     positions = xcoord.xcoord;
     console.log("positions: " + stringifyObject(positions));
 
-    var scale = { xscale: 4.0, yscale: 2.0, xshift: 5, yshift: 5, yLevelSize: 15, yInterLevelGap: 2, yExtraPerHorizontalLevel: 4 };
+    var scale = { xscale: 4.0, yscale: 2.0, xshift: 5, yshift: 15, yLevelSize: 15, yInterLevelGap: 2, yExtraPerHorizontalLevel: 4 };
     if (_comment) scale.yshift += 20;
 
     // precompute Y coordinate for different ranks
@@ -292,7 +292,7 @@ function display_processed_graph(positionedGraph, renderTo, _debug, _comment) {
     var maxY = (rankYcoord[ordering.order.length-1] + 200);
     var maxX = scale.xshift + (Math.max.apply(Math, positions) + Math.max.apply(Math, G.vWidth))*scale.xscale;
 
-    var canvas = Raphael(renderTo, Math.max(browserVisibleWidth(), maxX), Math.max(100, maxY));
+    var canvas = Raphael(renderTo, Math.max(browserVisibleWidth()-15, maxX), Math.max(100, maxY));
     if (_comment) canvas.text(50,10,_comment);
 
     // rank 0 has removed virtual nodes
@@ -359,11 +359,14 @@ function display_processed_graph(positionedGraph, renderTo, _debug, _comment) {
                     if ( rankU == r ) {
                         // draw horizontal relationship edge (which may go at different levels depending on attachmentPort)
                         var relLineInfo = positionedGraph.getRelationshipLineInfo( destination, v );
-                        var yShift = relLineInfo.attachmentPort*5;
+                        //var yShift = relLineInfo.attachmentPort*5;
+                        var yShift = relLineInfo.verticalLevel*6;
 
                         drawRelationshipLine( canvas, scale, x, yprev-yShift, u_x, yprev-yShift, consangrRelationship );
-                        if (yShift != 0)
+                        if (yShift != 0) {
                             drawRelationshipLine( canvas, scale, u_x, yprev-yShift, u_x, yprev, consangrRelationship );
+                            drawRelationshipLine( canvas, scale, x, yprev-yShift, x, yprev, consangrRelationship );
+                        }
 
                         if (DISPLAYDEBUG && G.isVirtual(u))
                             drawNodeBox(canvas, scale, u_x, y, 2, 0.4, u.toString() + "/" + u_x.toString());

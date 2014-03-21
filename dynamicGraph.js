@@ -184,7 +184,7 @@ DynamicPositionedGraph.prototype = {
 
         var rank = this.DG.ranks[person];
 
-        var result = {attachmentPort: info.attachlevel, verticalY: this.DG.computeRelLineY(rank, info.verticalLevel)};
+        var result = {attachmentPort: info.attachlevel, verticalLevel: info.verticalLevel, verticalY: this.DG.computeRelLineY(rank, info.verticalLevel)};
 
         return result;
     },
