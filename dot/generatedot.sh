@@ -1,2 +1,2 @@
-dot -Tps indexf2.dot -o outfile.ps
-okular outfile.ps
+dot -Tps example1-simple.dot -o example1-simple.ps
+okular example1-simple.ps

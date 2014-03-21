@@ -1,0 +1,11 @@
+digraph graphname {
+     f1 -> p1 -> chhub1 -> ch1 -> p3 -> chhub3 -> ch6;
+     m1 -> p1;
+     chhub1 -> ch2 -> p4 -> chhub4 -> ch8;
+     chhub1 -> ch3 -> p5 -> chhub5 -> ch7;
+     m3 -> p5;
+     f2 -> p2 -> chhub2 -> ch4 -> p3;
+     m2 -> p2;
+     chhub2 -> ch5 -> p4;
+}
+
