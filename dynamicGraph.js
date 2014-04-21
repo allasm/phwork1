@@ -2399,8 +2399,7 @@ Heuristics.prototype = {
         // 2D) check if there is any extra whitespace in the graph, e.g. if a subgraph can be
         //     moved closer to the rest of the graph by shortening some edges (this may be
         //     the case after some imperfect insertion heuristics move stuff too far).
-        //     TODO: interesting testcases:
-        //           - #5C: node "A" should be move left a bit
+        //     E.g. see Testcase 5g with/without compacting
         //this.DG.displayGraph(xcoord.xcoord, "before-compact2");
 
         this._compactGraph(xcoord);

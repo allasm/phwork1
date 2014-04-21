@@ -114,18 +114,17 @@
             " ------------------+-------------+-------------+---------------\n";
             for (var i = 0; i < results.length; i++ ) {
                 var testCase = results[i];
-                var maxExpected = testCase.expected + testCase.slack;
-                var diff        = testCase.best - maxExpected;
-                if (diff < 0) diff = 0;
                 reportString += " " + padString( testCase.name, 18, " " ) + "|  ";
 
-                if (diff > 0)
-                    if (diff > testCase.slack)
-                        reportString += "<font color=red>";
-                    else
-                        reportString += "<font color=orange>";
+                if (testCase.best > testCase.expected + 2*testCase.slack)
+                    reportString += "<font color=red>";
+                else if (testCase.best > testCase.expected + testCase.slack)
+                    reportString += "<font color=orange>";
+                else if (testCase.best < testCase.expected - testCase.slack)
+                    reportString += "<font color=#00CC99>";
                 else
                     reportString += "<font color=green>";
+
                 reportString += padString( testCase.best, 6, " ", true ) + "</font> ms  | ";
 
                 reportString += padString( testCase.expected, 6, " ", true ) + " ms   |  " +
