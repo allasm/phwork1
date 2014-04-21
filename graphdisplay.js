@@ -211,7 +211,7 @@ function computeChildhubHorizontalY ( scale, scaledY, targetLevel ) {
     return scaledY + (scale.yLevelSize + scale.yInterLevelGap)*scale.yscale + (targetLevel-1) * scale.yExtraPerHorizontalLevel *scale.yscale;
 }
 
-function drawRelationshipChildhubEdge( canvas, scale, x, scaledY, targetLevel ) {
+function drawRelationshipChildhubEdge( canvas, scale, x, scaledY, targetLevel, DISPLAYDEBUG, DEBUGID ) {
     var xx1 = scale.xshift + x*scale.xscale;
     var yy1 = scaledY + (scale.yLevelSize/2)*scale.yscale;
     var xx2 = xx1;
@@ -219,6 +219,9 @@ function drawRelationshipChildhubEdge( canvas, scale, x, scaledY, targetLevel ) 
     var line = canvas.path("M " + xx1 + " " + yy1 + " L " + xx2 + " " + yy2).toBack();
     line.attr({"stroke":"#000"});
     line.translate(0.5, 0.5);
+
+    if (DISPLAYDEBUG)
+        drawNodeBox(canvas, scale, x, yy2 - scale.yLevelSize * scale.yscale * 0.5, 2, 0.4, DEBUGID.toString() + "/" + x);
 }
 
 function drawVerticalChildLine( canvas, scale, childX, scaledY, targetLevel, scaledChildY) {
@@ -269,16 +272,16 @@ function display_processed_graph(positionedGraph, renderTo, _debug, _comment) {
     var G         = positionedGraph.DG.GG;
     var ranks     = positionedGraph.DG.ranks;
     var ordering  = positionedGraph.DG.order;
-    var positions = positionedGraph.DG.positions;
+    var positions = positionedGraph.DG.positions.slice(0);
     var consangr  = positionedGraph.DG.consangr;
     var vertLevel = positionedGraph.DG.vertLevel;
     var rankYraw  = positionedGraph.DG.rankY;
 
-    console.log("positions: " + stringifyObject(positions));
+    //console.log("positions INIT: " + stringifyObject(positions));
     var xcoord = new XCoord(positions,positionedGraph.DG);
     xcoord.normalize();
     positions = xcoord.xcoord;
-    console.log("positions: " + stringifyObject(positions));
+    //console.log("positions NORM: " + stringifyObject(positions));
 
     var scale = { xscale: 4.0, yscale: 2.0, xshift: 5, yshift: 15, yLevelSize: 15, yInterLevelGap: 2, yExtraPerHorizontalLevel: 4 };
     if (_comment) scale.yshift += 20;
@@ -333,7 +336,7 @@ function display_processed_graph(positionedGraph, renderTo, _debug, _comment) {
                 drawHorizontalChildLine( canvas, scale, leftmostX, rightmostX, y, vertLevel.childEdgeLevel[targetChildhub]);
 
                 // only one outedge to childhub - and it is guaranteed to be a one-rank long vertical edge
-                drawRelationshipChildhubEdge( canvas, scale, x, y, vertLevel.childEdgeLevel[targetChildhub] );
+                drawRelationshipChildhubEdge( canvas, scale, x, y, vertLevel.childEdgeLevel[targetChildhub], DISPLAYDEBUG, targetChildhub );
 
                 continue;
             }
