@@ -14,7 +14,7 @@
 //           - "neighbours"   - list of lists; nodes in the same sublist should be positioned next to each other
 //                              (if there are more than two in the list any ordering of the nodes themselves is OK)
 //
-// runTime:  expected relative run time
+// runTime:  best run time on reference system (Chromium v33/Ubuntu/Core2Duo @2.93Ghz)
 //
 // An optional format where nodes are defined by IDs instead of name is also supported (as in testcase "2c"); that
 // is the format produced by graph serialization and supports nodes with no names (and is a bit more concise)
@@ -57,7 +57,7 @@ var testCaseDatabase = {
             "validate": { "maxCrossings": 0,
                           "sameRank": [ ['f11','m11','f13','m13','f12','m12','p1', 'p2', 'p3' ],
                                         ['ch1','ch2','ch3','ch4','ch5','ch6','ch7','ch8','ch9'] ] },
-            "runTime":  { best: 9, average: 20 }
+            "runTime":  { best: 4 }
           },
 
     "1b": { "comment": "same as 1a plus a few more children for a slightly more complicated layout test (more top level nodes than ordering buckets)",
@@ -92,7 +92,7 @@ var testCaseDatabase = {
                         { name :'leaf3', gender: "male" },
                         { name :'leaf4', gender: "male" } ],
             "validate": { "maxCrossings": 0 },
-            "runTime":  { best: 29, average: 50 }
+            "runTime":  { best: 16 }
           },
 
     "2a": { "comment": "2+1 generations with brother-sister-brother-sister relationships (minimum one edge crossing)",
@@ -112,7 +112,7 @@ var testCaseDatabase = {
                         { name :'p4', outedges: [ {to: 'ch7'} ], relationship: true },
                         { name :'ch7', gender: "male" } ],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 7, average: 30 }
+            "runTime":  { best: 3 }
           },
 
     "2b": { "comment": "similar to 2a but with an extra relationship which should be correctly laid out with no additional edge crossings",
@@ -135,7 +135,7 @@ var testCaseDatabase = {
                         { name :'ch6', gender: "male" },
                         { name :'ch8', gender: "male" } ],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 8, average: 30 }
+            "runTime":  { best: 4 }
           },
 
     "3a": { "comment": "two twins, one of them married to two sisters. Stored in serialized format",
@@ -158,7 +158,7 @@ var testCaseDatabase = {
                         {"id":16,"prop":{"gender":"U"}} ],
             "validate": { "maxCrossings": 1,
                           "neighbours": [ [4,9] ] },
-            "runTime":  { best: 5, average: 20 }
+            "runTime":  { best: 2 }
           },
 
     "3b": { "comment": "3 relationships per person",
@@ -173,7 +173,7 @@ var testCaseDatabase = {
                         { name :'p2', outedges: [ {to: 'm22'} ], relationship: true },
                         { name :'p3', outedges: [ {to: 'm23'} ], relationship: true } ],
             "validate": { "maxCrossings": 1 },  // TODO: valkidate that two males are to the left, one to the right (instead of one to the left, two to the right)
-            "runTime":  { best: 5, average: 20 }
+            "runTime":  { best: 2 }
           },
 
     "3c": { "comment": "Triplet twins, inter-twin relationships",
@@ -218,7 +218,7 @@ var testCaseDatabase = {
                         {"id":38,"rel":true,"hub":true,"prop":{},"outedges":[{"to":39}]},
                         {"id":39,"chhub":true,"prop":{},"outedges":[{"to":40}]},{"id":40,"prop":{"gender":"U"}}],
             "validate": { "maxCrossings": 0 },
-            "runTime":  { best: 13, average: 35 }
+            "runTime":  { best: 6 }
           },
 
     "3d": { "comment": "Test multiple relationships on the same rank + switching children when relat. switch while re-ranking",
@@ -247,7 +247,7 @@ var testCaseDatabase = {
                         {"id":22,"chhub":true,"prop":{},"outedges":[{"to":23}]},
                         {"id":23,"prop":{"gender":"U"}}],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 45, average: 60 }
+            "runTime":  { best: 27 }
           },
 
     "4a": { "comment": "\"I'm my own grandpa\" (a case of grandparent-grandchild relationship)",
@@ -264,7 +264,7 @@ var testCaseDatabase = {
                         { name :'p3', outedges: [ {to: '7'} ], relationship: true },
                         { name :'p4', outedges: [ {to: '8'} ], relationship: true } ],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 6, average: 20 }
+            "runTime":  { best: 3 }
           },
 
     "4b": { "comment": "4a modified (an extra node was added) to test edge-crossing behavior in a special case",
@@ -284,7 +284,7 @@ var testCaseDatabase = {
                         { name :'p5', outedges: [ {to: '10'} ], relationship: true },
                         { name :'10', gender: "female" } ],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 8, average: 20 }
+            "runTime":  { best: 4 }
           },
 
     "4c": { "comment": "a case of consanguineous grandparent-grandchild relationship. No edge crossings",
@@ -305,7 +305,7 @@ var testCaseDatabase = {
                         { name :'p4', outedges: [ {to: 'f41'},{to: 'm41'} ], relationship: true } ],
             "validate": { "maxCrossings": 0,
                           "sameRank":     [ ['p4','m31'], ['f12','m11','m12','f11'] ] },
-            "runTime":  { best: 8, average: 20 }
+            "runTime":  { best: 3 }
           },
 
     "4d": { "comment": "4+1 generations, two multi-generational edges. No edge crossings",
@@ -325,7 +325,7 @@ var testCaseDatabase = {
                         { name :'11', gender: "female" },
                         { name :'p4', outedges: [ {to: '11'} ], rel: true } ],
             "validate": { "maxCrossings": 0 },
-            "runTime":  { best: 7, average: 20 }
+            "runTime":  { best: 3 }
           },
 
     "4e": { "comment": "6+1 generations, test correct placement of first segments of long edges",
@@ -365,7 +365,71 @@ var testCaseDatabase = {
                         {"id":33,"prop":{"gender":"F"},"outedges":[{"to":32}]},
                         {"id":34,"prop":{"gender":"M"},"outedges":[{"to":32}]}],
             "validate": { "maxCrossings": 0 },
-            "runTime":  { best: 12, average: 30 }
+            "runTime":  { best: 7 }
+          },
+
+    "4f": { "comment": "criss-crossed long edges",
+            "graph":   [{id: 0, prop: {gender: 'M', fName: 'Zz2', lName: ''}, outedges: [{to: 1}]},
+                        {id: 1, rel: true, hub: true, prop: {}, outedges: [{to: 3}]},
+                        {id: 2, prop: {gender: 'F'}, outedges: [{to: 1}]},
+                        {id: 3, chhub: true, prop: {}, outedges: [{to: 4}, {to: 5}]},
+                        {id: 4, prop: {gender: 'U'}, outedges: [{to: 6}]},
+                        {id: 5, prop: {gender: 'F'}, outedges: [{to: 10}]},
+                        {id: 6, rel: true, hub: true, prop: {}, outedges: [{to: 8}]},
+                        {id: 7, prop: {gender: 'U'}, outedges: [{to: 6}, {to: 17}]},
+                        {id: 8, chhub: true, prop: {}, outedges: [{to: 9}]},
+                        {id: 9, prop: {gender: 'F', fName: ''}, outedges: [{to: 14}]},
+                        {id: 10, rel: true, hub: true, prop: {}, outedges: [{to: 12}]},
+                        {id: 11, prop: {gender: 'M'}, outedges: [{to: 10}, {to: 14}]},
+                        {id: 12, chhub: true, prop: {}, outedges: [{to: 13}]},
+                        {id: 13, prop: {gender: 'U'}, outedges: [{to: 17}]},
+                        {id: 14, rel: true, hub: true, prop: {}, outedges: [{to: 15}]},
+                        {id: 15, chhub: true, prop: {}, outedges: [{to: 16}]},
+                        {id: 16, prop: {gender: 'U'}},
+                        {id: 17, rel: true, hub: true, prop: {}, outedges: [{to: 18}]},
+                        {id: 18, chhub: true, prop: {}, outedges: [{to: 19}]},
+                        {id: 19, prop: {gender: 'U'}}],
+            "runTime":  { best: 5 }
+          },
+
+    "4g": { "comment": "4f plus a few nodes",
+            "graph":   [{id: 0, prop: {gender: 'M', fName: 'Zz2', lName: ''}, outedges: [{to: 1}]},
+                        {id: 1, rel: true, hub: true, prop: {}, outedges: [{to: 3}]},
+                        {id: 2, prop: {gender: 'F'}, outedges: [{to: 1}]},
+                        {id: 3, chhub: true, prop: {}, outedges: [{to: 4}, {to: 5}]},
+                        {id: 4, prop: {gender: 'U'}, outedges: [{to: 6}]},
+                        {id: 5, prop: {gender: 'F'}, outedges: [{to: 10}]},
+                        {id: 6, rel: true, hub: true, prop: {}, outedges: [{to: 8}]},
+                        {id: 7, prop: {gender: 'U'}, outedges: [{to: 6}, {to: 17}]},
+                        {id: 8, chhub: true, prop: {}, outedges: [{to: 9}]},
+                        {id: 9, prop: {gender: 'F', fName: ''}, outedges: [{to: 14}, {to: 20}]},
+                        {id: 10, rel: true, hub: true, prop: {}, outedges: [{to: 12}]},
+                        {id: 11, prop: {gender: 'M'}, outedges: [{to: 10}, {to: 14}]},
+                        {id: 12, chhub: true, prop: {}, outedges: [{to: 13}]},
+                        {id: 13, prop: {gender: 'U'}, outedges: [{to: 17}, {to: 24}]},
+                        {id: 14, rel: true, hub: true, prop: {}, outedges: [{to: 15}]},
+                        {id: 15, chhub: true, prop: {}, outedges: [{to: 16}]},
+                        {id: 16, prop: {gender: 'U'}},
+                        {id: 17, rel: true, hub: true, prop: {}, outedges: [{to: 18}]},
+                        {id: 18, chhub: true, prop: {}, outedges: [{to: 19}]},
+                        {id: 19, prop: {gender: 'U'}},
+                        {id: 20, rel: true, hub: true, prop: {}, outedges: [{to: 22}]},
+                        {id: 21, prop: {gender: 'M'}, outedges: [{to: 20}]},
+                        {id: 22, chhub: true, prop: {}, outedges: [{to: 23}]},
+                        {id: 23, prop: {gender: 'U'}},
+                        {id: 24, rel: true, hub: true, prop: {}, outedges: [{to: 26}]},
+                        {id: 25, prop: {gender: 'U'}, outedges: [{to: 24}]},
+                        {id: 26, chhub: true, prop: {}, outedges: [{to: 27}]},
+                        {id: 27, prop: {gender: 'U'}},
+                        {id: 28, chhub: true, prop: {}, outedges: [{to: 25}]},
+                        {id: 29, rel: true, hub: true, prop: {}, outedges: [{to: 28}]},
+                        {id: 30, prop: {gender: 'F'}, outedges: [{to: 29}]},
+                        {id: 31, prop: {gender: 'M'}, outedges: [{to: 29}]},
+                        {id: 32, chhub: true, prop: {}, outedges: [{to: 21}]},
+                        {id: 33, rel: true, hub: true, prop: {}, outedges: [{to: 32}]},
+                        {id: 34, prop: {gender: 'F'}, outedges: [{to: 33}]},
+                        {id: 35, prop: {gender: 'M'}, outedges: [{to: 33}]}],
+            "runTime":  { best: 60 }
           },
 
     "5a": { "comment": "a relationship between one person and both a parent and parent's child",
@@ -385,7 +449,7 @@ var testCaseDatabase = {
                         { name :'p3', outedges: [ {to: '10'} ], relationship: true },
                         { name :'p4', outedges: [ {to: '11'} ], relationship: true } ],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 17, average: 50 }
+            "runTime":  { best: 6 }
           },
 
     "5b": { "comment": "3+1 generations with two grandparent-grandchild relationships. No edge crossings.",
@@ -411,7 +475,7 @@ var testCaseDatabase = {
                         { name :'p5', outedges: [ {to: '12'} ], relationship: true },
                         { name :'p6', outedges: [ {to: '13'}, {to: '14'} ], relationship: true } ],
             "validate": { "maxCrossings": 0 },
-            "runTime":  { best: 19, average: 60 }
+            "runTime":  { best: 9 }
           },
 
     "5c": { "comment": "similar to 5b but with more root nodes",
@@ -444,7 +508,7 @@ var testCaseDatabase = {
                         { name :'p7', outedges: [ {to: '9'}, {to: 'C'} ], relationship: true },
                         { name :'p8', outedges: [ {to: 'E'} ], relationship: true } ],
             "validate": { "maxCrossings": 0 },
-            "runTime":  { best: 188, average: 220 }
+            "runTime":  { best: 98 }
           },
 
     "5d": { "comment": "similar to 5c but with a more complicated relationship ('A' and '4' instead of 'A' and '9')",
@@ -477,7 +541,7 @@ var testCaseDatabase = {
                         { name :'p7', outedges: [ {to: '9'}, {to: 'C'} ], relationship: true },
                         { name :'p8', outedges: [ {to: 'E'} ], relationship: true } ],
             "validate": { "maxCrossings": 2 },
-            "runTime":  { best: 195, average: 230}
+            "runTime":  { best: 103 }
           },
 
     "5e": { "comment": "similar to 5d but with a few additional nodes",
@@ -513,7 +577,7 @@ var testCaseDatabase = {
                         { name :'p8', outedges: [ {to: 'E'} ], relationship: true },
                         { name :'p9', outedges: [ {to: 'CB'} ], relationship: true } ],
             "validate": { "maxCrossings": 2 },
-            "runTime":  { best: 250, average: 310 }
+            "runTime":  { best: 136 }
           },
 
     "5f": { "comment": "very wide with two long edges",
@@ -552,7 +616,7 @@ var testCaseDatabase = {
                         {"id":32,"chhub":true,"prop":{},"outedges":[{"to":33}]},
                         {"id":33,"prop":{"gender":"U"}}],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 220, average: 300 }
+            "runTime":  { best: 123 }
           },
 
     "5g": { "comment": "5e plus a partner (with more descendants) added to '5'. Watch for extra whitespace & correct positioning.",
@@ -603,7 +667,7 @@ var testCaseDatabase = {
                       {id: 44, chhub: true, prop: {}, outedges: [{to: 45}]},
                       {id: 45, prop: {gender: 'U'}}],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 265, average: 390 }
+            "runTime":  { best: 166 }
           },
 
     "5h": { "comment": "5e plus a number of partners added to '5' and '12'. Watch for: an unnecessary crossing between '15' and '12' and extra whitespace.",
@@ -654,7 +718,7 @@ var testCaseDatabase = {
                       {id: 44, chhub: true, prop: {}, outedges: [{to: 45}]},
                       {id: 45, prop: {gender: 'U'}}],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 280, average: 400 }
+            "runTime":  { best: 172 }
           },
 
     "5i": { "comment": "another example of wide + long edge + disorders. Watch fgor extra space between 7 and 8",
@@ -690,7 +754,7 @@ var testCaseDatabase = {
                       {id: 29, chhub: true, prop: {}, outedges: [{to: 30}]},
                       {id: 30, prop: {gender: 'U'}}],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 20, average: 50 }
+            "runTime":  { best: 7 }
           },
 
     "5j": { "comment": "5i plus one long edge - resulting in a different alternative layout",
@@ -733,7 +797,90 @@ var testCaseDatabase = {
                       {id: 36, chhub: true, prop: {}, outedges: [{to: 37}]},
                       {id: 37, prop: {gender: 'U'}}],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 60, average: 110 }
+            "runTime":  { best: 27 }
+          },
+
+    "5k": { "comment": "huge and ugly: test that there are no bugs/ovelaps/etc",
+            "graph": [{id: 0, prop: {gender: 'M', fName: 'Zz2', lName: ''}, outedges: [{to: 1}, {to: 21}, {to: 38}]},
+                      {id: 1, rel: true, hub: true, prop: {}, outedges: [{to: 3}]},
+                      {id: 2, prop: {gender: 'F'}, outedges: [{to: 1}, {to: 18}]},
+                      {id: 3, chhub: true, prop: {}, outedges: [{to: 4}]},
+                      {id: 4, prop: {gender: 'U'}},
+                      {id: 5, prop: {gender: 'U'}, outedges: [{to: 10}]},
+                      {id: 6, chhub: true, prop: {}, outedges: [{to: 5}]},
+                      {id: 7, rel: true, hub: true, prop: {}, outedges: [{to: 6}]},
+                      {id: 8, prop: {gender: 'F'}, outedges: [{to: 7}]},
+                      {id: 9, prop: {gender: 'M'}, outedges: [{to: 7}]},
+                      {id: 10, rel: true, hub: true, prop: {}, outedges: [{to: 12}]},
+                      {id: 11, prop: {gender: 'U'}, outedges: [{to: 10}]},
+                      {id: 12, chhub: true, prop: {}, outedges: [{to: 13}]},
+                      {id: 13, prop: {gender: 'U'}, outedges: [{to: 42}, {to: 50}]},
+                      {id: 14, chhub: true, prop: {}, outedges: [{to: 11}]},
+                      {id: 15, rel: true, hub: true, prop: {}, outedges: [{to: 14}]},
+                      {id: 16, prop: {gender: 'F'}, outedges: [{to: 15}, {to: 21}, {to: 24}, {to: 28}, {to: 32}, {to: 35}]},
+                      {id: 17, prop: {gender: 'M'}, outedges: [{to: 15}, {to: 18}]},
+                      {id: 18, rel: true, hub: true, prop: {}, outedges: [{to: 19}]},
+                      {id: 19, chhub: true, prop: {}, outedges: [{to: 20}]},
+                      {id: 20, prop: {gender: 'U'}},
+                      {id: 21, rel: true, hub: true, prop: {}, outedges: [{to: 22}]},
+                      {id: 22, chhub: true, prop: {}, outedges: [{to: 23}]},
+                      {id: 23, prop: {gender: 'U'}},
+                      {id: 24, rel: true, hub: true, prop: {}, outedges: [{to: 26}]},
+                      {id: 25, prop: {gender: 'M'}, outedges: [{to: 24}]},
+                      {id: 26, chhub: true, prop: {}, outedges: [{to: 27}]},
+                      {id: 27, prop: {gender: 'U'}},
+                      {id: 28, rel: true, hub: true, prop: {}, outedges: [{to: 30}]},
+                      {id: 29, prop: {gender: 'M'}, outedges: [{to: 28}]},
+                      {id: 30, chhub: true, prop: {}, outedges: [{to: 31}]},
+                      {id: 31, prop: {gender: 'M', fName: ''}, outedges: [{to: 32}]},
+                      {id: 32, rel: true, hub: true, prop: {}, outedges: [{to: 33}]},
+                      {id: 33, chhub: true, prop: {}, outedges: [{to: 34}]},
+                      {id: 34, prop: {gender: 'M', fName: ''}, outedges: [{to: 35}]},
+                      {id: 35, rel: true, hub: true, prop: {}, outedges: [{to: 36}]},
+                      {id: 36, chhub: true, prop: {}, outedges: [{to: 37}]},
+                      {id: 37, prop: {gender: 'U'}},
+                      {id: 38, rel: true, hub: true, prop: {}, outedges: [{to: 40}]},
+                      {id: 39, prop: {gender: 'F'}, outedges: [{to: 38}]},
+                      {id: 40, chhub: true, prop: {}, outedges: [{to: 41}]},
+                      {id: 41, prop: {gender: 'U'}, outedges: [{to: 58}]},
+                      {id: 42, rel: true, hub: true, prop: {}, outedges: [{to: 44}]},
+                      {id: 43, prop: {gender: 'U'}, outedges: [{to: 42}]},
+                      {id: 44, chhub: true, prop: {}, outedges: [{to: 45}]},
+                      {id: 45, prop: {gender: 'U'}},
+                      {id: 46, chhub: true, prop: {}, outedges: [{to: 43}]},
+                      {id: 47, rel: true, hub: true, prop: {}, outedges: [{to: 46}]},
+                      {id: 48, prop: {gender: 'F'}, outedges: [{to: 47}]},
+                      {id: 49, prop: {gender: 'M'}, outedges: [{to: 47}]},
+                      {id: 50, rel: true, hub: true, prop: {}, outedges: [{to: 52}]},
+                      {id: 51, prop: {gender: 'U'}, outedges: [{to: 50}]},
+                      {id: 52, chhub: true, prop: {}, outedges: [{to: 53}]},
+                      {id: 53, prop: {gender: 'U'}},
+                      {id: 54, chhub: true, prop: {}, outedges: [{to: 51}]},
+                      {id: 55, rel: true, hub: true, prop: {}, outedges: [{to: 54}]},
+                      {id: 56, prop: {gender: 'F'}, outedges: [{to: 55}]},
+                      {id: 57, prop: {gender: 'M'}, outedges: [{to: 55}]},
+                      {id: 58, rel: true, hub: true, prop: {}, outedges: [{to: 60}]},
+                      {id: 59, prop: {gender: 'U'}, outedges: [{to: 58}]},
+                      {id: 60, chhub: true, prop: {}, outedges: [{to: 61}]},
+                      {id: 61, prop: {gender: 'U'}, outedges: [{to: 66}]},
+                      {id: 62, chhub: true, prop: {}, outedges: [{to: 59}]},
+                      {id: 63, rel: true, hub: true, prop: {}, outedges: [{to: 62}]},
+                      {id: 64, prop: {gender: 'F'}, outedges: [{to: 63}]},
+                      {id: 65, prop: {gender: 'M'}, outedges: [{to: 63}]},
+                      {id: 66, rel: true, hub: true, prop: {}, outedges: [{to: 68}]},
+                      {id: 67, prop: {gender: 'U'}, outedges: [{to: 66}]},
+                      {id: 68, chhub: true, prop: {}, outedges: [{to: 69}]},
+                      {id: 69, prop: {gender: 'U'}},
+                      {id: 70, chhub: true, prop: {}, outedges: [{to: 67}]},
+                      {id: 71, rel: true, hub: true, prop: {}, outedges: [{to: 70}]},
+                      {id: 72, prop: {gender: 'F'}, outedges: [{to: 71}]},
+                      {id: 73, prop: {gender: 'M'}, outedges: [{to: 71}]},
+                      {id: 74, chhub: true, prop: {}, outedges: [{to: 49}]},
+                      {id: 75, rel: true, hub: true, prop: {}, outedges: [{to: 74}]},
+                      {id: 76, prop: {gender: 'F'}, outedges: [{to: 75}]},
+                      {id: 77, prop: {gender: 'M'}, outedges: [{to: 75}]}],
+            "validate": { "maxCrossings": 1 },
+            "runTime":  { best: 676 }
           },
 
     "Rank1": { "comment": "a graph with two mid-level parentless nodes which should be ranked on the same\n\
@@ -754,7 +901,7 @@ var testCaseDatabase = {
                         { name :'p5', outedges: [ {to: 'f51'}, {to: 'm51'} ], relationship: true } ],
             "validate": { "maxCrossings": 0,
                           "neighbours": [ [ 'm33', 'm34'] ] },
-            "runTime":  { best: 2, average: 15 }
+            "runTime":  { best: 1 }
            },
 
     "Rank2": { "comment": "two components connected by two multi-rank edges. One of those should be shortened.\n\
@@ -786,7 +933,7 @@ var testCaseDatabase = {
                         { name :'p6', outedges: [ {to: 'f61'}, {to: 'f62'} ], relationship: true } ],
             "validate": { "maxCrossings": 0,
                           "sameRank": [ ['m12','f21'] ] },
-            "runTime":  { best: 12, average: 30 }
+            "runTime":  { best: 7 }
            },
 
     "Rank3": { "comment": "similar to Rank2, but m21->p6 edge has higher weight and will be shortened instead of m12->p3",
@@ -816,7 +963,7 @@ var testCaseDatabase = {
                         { name :'p6', outedges: [ {to: 'f61'}, {to: 'f62'} ], relationship: true } ],
             "validate": { "maxCrossings": 0,
                           "sameRank": [ ['m21','f51'] ]  },
-            "runTime":  { best: 17, average: 50 }
+            "runTime":  { best: 9 }
            },
 
     "T1": { "comment": "Template #1 - make sure looks good as likely used a lot",
@@ -850,7 +997,7 @@ var testCaseDatabase = {
                         {id: 27, prop: {gender: 'M'}, outedges: [{to: 26}]},
                         {id: 28, prop: {gender: 'F'}, outedges: [{to: 26}]}],
             "validate": { "maxCrossings": 0 },
-            "runTime":  { best: 7, average: 30 }
+            "runTime":  { best: 4 }
            },
 
     "Madeline_CS_002": { "comment": "CS_002 from Madeline test suite",
@@ -870,7 +1017,7 @@ var testCaseDatabase = {
                         { name :'11', gender: "female" },
                         { name :'p4', outedges: [ {to: '11'} ], rel: true } ],
             "validate": { "maxCrossings": 0 },
-            "runTime":  { best: 5, average: 30 }
+            "runTime":  { best: 3 }
            },
 
     "Madeline_CS_004": { "comment": "CS_004 from Madeline test suite",
@@ -893,7 +1040,7 @@ var testCaseDatabase = {
                         { name :'12', gender: "male" },
                         { name :'13', gender: "male" } ],
             "validate": { "maxCrossings": 0 },
-            "runTime":  { best: 7, average: 40 }
+            "runTime":  { best: 4 }
            },
 
     "Madeline_CS_009": { "comment": "CS_009 from Madeline test suite",
@@ -934,7 +1081,7 @@ var testCaseDatabase = {
                         { name :'95', gender: "male" },
                         { name :'96', gender: "female" } ],
             "validate": { "maxCrossings": 0 },
-            "runTime":  { best: 16, average: 45 }
+            "runTime":  { best: 10 }
            },
 
     "Madeline_MS_004": { "comment": "MS_004 from Madeline test suite",
@@ -991,7 +1138,7 @@ var testCaseDatabase = {
                         { name :'l18', gender: "male" },
                         { name :'l19', gender: "male" } ],
             "validate": {},
-            "runTime":  { best: 75, average: 160 }
+            "runTime":  { best: 48 }
            },
 
     "Abraham": { "comment": "\"The family of Abraham\" (stored in serialized format)",
@@ -1048,7 +1195,7 @@ var testCaseDatabase = {
                         {id: 51, rel: true, hub: true, prop: {}, outedges: [{to: 53}]},
                         {id: 52, prop: {gender: 'F'}, outedges: [{to: 51}]}, {id: 53, chhub: true, prop: {}, outedges: [{to: 20}, {to: 44}]}],
             "validate": { "maxCrossings": 10 },
-            "runTime":  { best: 320, average: 420 }
+            "runTime":  { best: 81 }
           }
 };
 

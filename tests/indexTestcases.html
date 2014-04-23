@@ -23,7 +23,7 @@
         var fakeConsole = { log: function() {} };
 
         // for timing tests
-        var referenceTestCase          = "5d";
+        var referenceTestCases         = { "3d": 1.0, "5d": 1.0, "Madeline_CS_009": 4.0 };
         var thisSystemToReferenceRatio = undefined;   // performnance difference on the reference test case
         var numTimingRuns              = 10;          // for each run slowest and fastest will be excluded
 
@@ -39,7 +39,6 @@
 
             display_processed_graph(dynamicG, 'output');
 
-            console.log("Average run time (excluding display time) in Firefox v23 on Core2 @ 2.8Ghz: " + testCaseData.runTime.average + "ms, best run time: " + testCaseData.runTime.best);
             console.log("Run time (excluding display time) on this machine: " + (elapsed - TIME_DRAWING_DEBUG) + "ms");
 
             //automatedCheck(dynamicG, testCaseData.validate);
@@ -108,7 +107,7 @@
                 }
             }
 
-            var reportString = "<br><br>Speed of this machine compared to reference testbed (Firefox v23 @ Core2Duo @ 2.8Ghz): " + thisSystemToReferenceRatio +
+            var reportString = "<br><br>Speed of this machine compared to reference testbed (Chromium v33 @ Core2Duo @ 2.8Ghz): " + thisSystemToReferenceRatio +
             "<br><br><div style=\"white-space: pre;\"><font face=\"courier new, monospace\">" +
             "  Test case        |  best time  |  expected   |  average time\n" +
             " ------------------+-------------+-------------+---------------\n";
@@ -138,12 +137,23 @@
         function runReferenceTiming()
         {
             if (!thisSystemToReferenceRatio) {
-                alert("Press to start system speed calibration... (may take up to 5 seconds)");
+                alert("Press to start system speed calibration... (may take up to 10 seconds)");
 
-                var timingRun = runOneSpeedTest(referenceTestCase);
+                var referenceTime = 0;
+                var thisTime      = 0;
 
-                thisSystemToReferenceRatio = testCaseDatabase[referenceTestCase].runTime.best / timingRun.best;
+                for (var test in referenceTestCases) {
+                    if (referenceTestCases.hasOwnProperty(test)) {
+                        var timingRun = runOneSpeedTest(test);
 
+                        var weight = referenceTestCases[test];
+
+                        thisTime      += timingRun.best * weight;
+                        referenceTime += testCaseDatabase[test].runTime.best * weight;
+                    }
+                }
+
+                thisSystemToReferenceRatio = referenceTime/thisTime;
                 thisSystemToReferenceRatio = Math.round( thisSystemToReferenceRatio * 10 ) / 10;
             }
         }
@@ -173,11 +183,11 @@
 
                 // test more for quick cases
                 if ( thisTime < 10 )
-                    numRunsForThisCase = numTimingRuns*4;
-                if ( numTimingRuns < numTimingRuns*3 && thisTime < 15 )
-                    numRunsForThisCase = numTimingRuns*3;
-                if ( numTimingRuns < numTimingRuns*2 && thisTime < 25 )
                     numRunsForThisCase = numTimingRuns*2;
+                if ( numRunsForThisCase < numTimingRuns*1.5 && thisTime < 25 )
+                    numRunsForThisCase = numTimingRuns*1.5;
+                if ( numRunsForThisCase < numTimingRuns+2 && thisTime < 130 )
+                    numRunsForThisCase = numTimingRuns+2;
             }
             // reenable console
             window.console = window.consoleBak;
