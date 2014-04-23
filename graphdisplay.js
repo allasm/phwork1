@@ -1,5 +1,5 @@
 function display_raw_graph(G, comment, renderTo) {
-    printObject(G);
+    //printObject(G);
     document.getElementById(renderTo).innerHTML =
         '<pre>'+
         'comment:    ' + comment + '\n' +
@@ -453,7 +453,7 @@ function debug_display_processed_graph(renderPackage, renderTo, debugPrint, debu
             if (v > G.getMaxRealVertexId()) {
                 var box = canvas.rect( 5 + leftX * xScale, topY+10, 2 * xScale, 10 );
                 box.attr({fill: "#ccc"});
-                var text = canvas.text( midX, topY + 15, v.toString() );
+                var text = canvas.text( midX, topY + 15, v.toString() + "/" + positions[v].toString() );
                 continue;
             }
 
