@@ -19,13 +19,59 @@
 
     <script type="text/javascript">
 
-        var timer = new Timer();
+        var timer       = new Timer();
         var fakeConsole = { log: function() {} };
+        var consoleBak  = window.console;
 
         // for timing tests
-        var referenceTestCases         = { "3d": 1.0, "5d": 1.0, "Madeline_CS_009": 4.0 };
         var thisSystemToReferenceRatio = undefined;   // performnance difference on the reference test case
         var numTimingRuns              = 10;          // for each run slowest and fastest will be excluded
+
+        //======================================================
+        var REFERENCE_SYSTEM_BENCHMNARK_TIME = 40;
+        // some random computation involving array and object accesses and some function calls
+        var testObj = {"func1": function(a,b) { return a+b;},
+                       "func2": function(a,b) { return a-b;} };
+        function referenceComputation()
+        {
+            var obj = {};
+            var xx  = [];
+            for (var i = 0; i < 100; ++i) {
+                obj[i] = [];
+                for (var j = 0; j < 1000; ++j) {
+                    obj[i].push(j);
+                }
+            }
+            for (id in obj) {
+                if (obj.hasOwnProperty(id)) {
+                    var arr = obj[id];
+                    for (var i = 0; i < arr.length - 1; ++i) {
+                        if (arr[i]%2 == 0) {
+                            arr[i] = testObj.func1(arr[i],arr[i+1]);
+                            xx.push(arr[i]);
+                        }
+                    }
+                    for (var i = 1; i < arr.length - 1; ++i) {
+                        if (arr[i-1] > arr[i])
+                            arr[i] += arr[arr[i]];
+                        else
+                            arr[i] += arr[arr[i-1]];
+                    }
+                }
+            }
+            for (var i = 1; i < xx.length; i++) {
+                for (var j = 0; j < xx[i].length; j++) {
+                    xx[i][j] = testObj.func2(xx[i-1][j], 1);
+                }
+            }
+            for (id in obj) {
+                if (obj.hasOwnProperty(id)) {
+                    obj[id][0] += xx[id][id];
+                }
+            }
+            return {"obj": obj, "arr": xx};
+        }
+        //======================================================
 
         function showTestCase( testCaseData )
         {
@@ -134,26 +180,28 @@
             document.getElementById("output").innerHTML = reportString;
         }
 
+        function time_reference_computation()
+        {
+            var minTime = Infinity;
+            for (var i = 0; i < 20; i++) {
+                timer.restart();
+                referenceComputation();
+                var thisTime = timer.report();
+                console.log("Reference run: " + thisTime + "ms");
+                if (thisTime < minTime)
+                    minTime = thisTime;
+            }
+            return minTime;
+        }
+
         function runReferenceTiming()
         {
             if (!thisSystemToReferenceRatio) {
-                alert("Press to start system speed calibration... (may take up to 10 seconds)");
+                alert("Press to start system speed calibration... (may take a few seconds)");
 
-                var referenceTime = 0;
-                var thisTime      = 0;
+                var thisTime = time_reference_computation();
 
-                for (var test in referenceTestCases) {
-                    if (referenceTestCases.hasOwnProperty(test)) {
-                        var timingRun = runOneSpeedTest(test);
-
-                        var weight = referenceTestCases[test];
-
-                        thisTime      += timingRun.best * weight;
-                        referenceTime += testCaseDatabase[test].runTime.best * weight;
-                    }
-                }
-
-                thisSystemToReferenceRatio = referenceTime/thisTime;
+                thisSystemToReferenceRatio = REFERENCE_SYSTEM_BENCHMNARK_TIME/thisTime;
                 thisSystemToReferenceRatio = Math.round( thisSystemToReferenceRatio * 10 ) / 10;
             }
         }
@@ -167,7 +215,6 @@
             console.log("Performing " + numTimingRuns + " or more layout computations for test case " + testCase);
 
             // disable console output
-            window.consoleBak = window.console;
             window.console = fakeConsole; //{ log: function() {} };
             var numRunsForThisCase = numTimingRuns;
 
@@ -190,7 +237,7 @@
                     numRunsForThisCase = numTimingRuns+2;
             }
             // reenable console
-            window.console = window.consoleBak;
+            window.console = consoleBak;
 
             var minTime = Math.min.apply(null, timings);
             var avgTime = 0;
