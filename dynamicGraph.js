@@ -1323,8 +1323,6 @@ DynamicPositionedGraph.prototype = {
 
         //connect last piece with personId
         this.DG.GG.addEdge(personId, prevPieceId, weight);
-
-        this._heuristics.optimizeLongEdgePlacement();
     },
 
 
@@ -2142,12 +2140,15 @@ Heuristics.prototype = {
                            this.DG.positions[firstOnPath] > this.DG.positions[ this.DG.order.order[rank][newOrder] ])
                         newOrder++;
 
-                    // fix common imprefetion when this edge will cross a node-relationship edge. Testcase 4e covers this case.
+                    // fix common imperfection when this edge will cross a node-relationship edge. Testcase 4e covers this case.
                     var toTheLeft  = this.DG.order.order[rank][newOrder-1];
                     var toTheRight = this.DG.order.order[rank][newOrder];
                     if (this.DG.GG.isRelationship(toTheLeft) && this.DG.GG.isPerson(toTheRight) &&
                         this.DG.GG.hasEdge(toTheRight, toTheLeft) && this.DG.GG.getOutEdges(toTheRight).length ==1 )
                         newOrder++;
+                    if (this.DG.GG.isRelationship(toTheRight) && this.DG.GG.isPerson(toTheLeft) &&
+                        this.DG.GG.hasEdge(toTheLeft, toTheRight) && this.DG.GG.getOutEdges(toTheLeft).length ==1 )
+                        newOrder--;
                 }
                 else {
                     while (newOrder > 0 &&
@@ -2160,6 +2161,9 @@ Heuristics.prototype = {
                     if (this.DG.GG.isRelationship(toTheRight) && this.DG.GG.isPerson(toTheLeft) &&
                         this.DG.GG.hasEdge(toTheLeft, toTheRight) && this.DG.GG.getOutEdges(toTheLeft).length ==1 )
                         newOrder--;
+                    if (this.DG.GG.isRelationship(toTheLeft) && this.DG.GG.isPerson(toTheRight) &&
+                        this.DG.GG.hasEdge(toTheRight, toTheLeft) && this.DG.GG.getOutEdges(toTheRight).length ==1 )
+                        newOrder++;
                 }
 
                 this.DG.order.insertAndShiftAllIdsAboveVByOne(newNodeId, rank, newOrder);

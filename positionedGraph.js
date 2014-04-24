@@ -384,14 +384,14 @@ PositionedGraph.prototype = {
         //useStack = true;
 
         while ( true ) {
-            var timer2 = new Timer();
+            //var timer2 = new Timer();
             for (var initOrderIter = 0; initOrderIter < permutationsRoots.length; initOrderIter++ ) {
                 initOrderIterTotal++;
 
                 order = this.init_order_top_to_bottom(permutationsRoots[initOrderIter], useStack);
 
                 this.transpose(order, false, bestCrossings*4 + 5);  // fix locally-fixable edge crossings,
-                                                                // but do not bother doing minor optimizations (for performance reasons)
+                                                                    // but do not bother doing minor optimizations (for performance reasons)
 
                 var numCrossings = this.edge_crossing(order);
 
@@ -1298,7 +1298,9 @@ PositionedGraph.prototype = {
         for (var r = rankFrom; r <= rankTo; ++r) {
             var numVert = order.order[r].length;
 
-            for (var i = 0; i < numVert - 1; ++i) {   // -1 because we only check crossings of edges going out of vertices of higher orders
+            // TODO: investigate about person nodes at the last position, and not counting crossings due to its relationship
+            //       when "-1" is removed testcase "abraham" incorrectly places "rachel" on the other side of twins
+            for (var i = 0; i < numVert-1; ++i) {   // -1 because we only check crossings of edges going out of vertices of higher orders
                 var v = order.order[r][i];
 
                 var isChhub  = this.GG.isChildhub(v);
@@ -1323,6 +1325,7 @@ PositionedGraph.prototype = {
                             numCrossings += crossings/2; // only assign it half a crossing because most will be fixed by transpose()
                                                          // - and if "1" is assigned transpose wont fix certain local cases
                         }
+                        //if (i == numVert-1) continue;
                     }
 
                     // so we have an edge v->targetV. Have to check how many edges
@@ -1388,7 +1391,7 @@ PositionedGraph.prototype = {
                     // special case: count edges from parents to twins twice
                     // (since all twins are combined into one, and this edge actually represents multiple parent-child edges)
                     //if (isChhub && this.GG.isParentToTwinEdge(vertex, target))
-                    if (isChhub && this.GG.getTwinGroupId(target))
+                    if (isChhub && this.GG.getTwinGroupId(target) != null)
                         crossings++;
                 }
             }
@@ -1635,27 +1638,18 @@ PositionedGraph.prototype = {
                 var maxIndex = order.order[r].length - 1;
                 for (var i = 0; i < maxIndex; ++i) {
 
-                    var v1 = order.order[r][i];
-                    var v2 = order.order[r][i+1];
-
-                    //if (v1 == 23 && v2 == 20)
-                    //if (doMinorImprovements)
-                    //    console.log("trying: " + v1 + "  <-> " + v2);
-
                     order.exchange(r, i, i+1);
 
                     var newEdgeCrossings = this.edge_crossing(order, r);
                     var newLengthScore   = doMinorImprovements ? this.edge_length_score(order,r) : 0;
 
                     //if (doMinorImprovements)
+                    //    console.log("trying: " + v1 + "  <-> " + v2);
                     //if ( v1 == 8 || v1 == 9 )  {
                     //    console.log("v = " + v1 + ", u = " + v2 + ", newScore= " + newEdgeCrossings +
                     //                ", lenScore= " + newLengthScore + ", oldScore= " + numEdgeCrossings +
                     //                ", oldLenScore= " + edgeLengthScore);
                     //}
-
-                    // TODO: also transpose if more males/females end up on the preferred
-                    //var maleFemaleScore  = ...
 
                     if (newEdgeCrossings < numEdgeCrossings ||
                         (newEdgeCrossings == numEdgeCrossings && newLengthScore < edgeLengthScore) ) {
@@ -1682,7 +1676,6 @@ PositionedGraph.prototype = {
                 if (rankImproved) r--; // repeat again for the same rank
             }
         }
-
         //if (doMinorImprovements) printObject(order);
     },
 
