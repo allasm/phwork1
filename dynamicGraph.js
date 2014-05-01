@@ -213,6 +213,23 @@ DynamicPositionedGraph.prototype = {
         return children;
     },
 
+    getAllChildren: function( v )
+    {
+        if (!this.isPerson(v))
+            throw "Assertion failed: getAllChildren() is applied to a non-relationship";
+
+        var rels = this.DG.GG.getAllRelationships(v);
+
+        var allChildren = [];
+        for (var i = 0; i < rels.length; i++) {
+            var chhub    = this.DG.GG.getOutEdges(rels[i])[0];
+            var children = this.DG.GG.getOutEdges(chhub);
+
+            allChildren = allChildren.concat(children);
+        }
+        return allChildren;
+    },
+
     hasNonPlaceholderNonAdoptedChildren: function( v )
     {
         if (this.isRelationship(v)) {
@@ -270,7 +287,7 @@ DynamicPositionedGraph.prototype = {
 
         var knownGenderPartner = undefined;
         for (var i = 0; i < partners.length; i++) {
-            var partnerGender = this.getProperties(partners[i])["gender"];
+            var partnerGender = this.getGender(partners[i]);
             if (partnerGender != "U") {
                 possible[partnerGender] = false;
                 break;
@@ -346,6 +363,14 @@ DynamicPositionedGraph.prototype = {
             throw "Assertion failed: getOppositeGender() is applied to a non-person";
 
         return this.DG.GG.getOppositeGender(v);
+    },
+
+    getGender: function( v )
+    {
+        if (!this.isPerson(v))
+            throw "Assertion failed: getGender() is applied to a non-person";
+
+        return this.DG.GG.getGender(v);
     },
 
     getDisconnectedSetIfNodeRemoved: function( v )
@@ -1049,6 +1074,7 @@ DynamicPositionedGraph.prototype = {
 
     toJSON: function ()
     {
+        //var timer = new Timer();
         var output = {};
 
         // note: need to save GG not base G becaus eof the graph was dynamically modified
@@ -1065,6 +1091,7 @@ DynamicPositionedGraph.prototype = {
         // note: everything else can be recomputed based on the information above
 
         console.log("JSON represenation: " + JSON.stringify(output));
+        //timer.printSinceLast("=== to JSON: ");
 
         return JSON.stringify(output);
     },
@@ -1243,6 +1270,15 @@ DynamicPositionedGraph.prototype = {
                         result[i] = true;
                         continue;
                     }
+                    // check vertical positioning changes
+                    var parents = this.DG.GG.getParents(i);
+                    if (vertLevelsBefore.outEdgeVerticalLevel[parents[0]][i].verticalLevel !=  this.DG.vertLevel.outEdgeVerticalLevel[parents[0]][i].verticalLevel ||
+                        vertLevelsBefore.outEdgeVerticalLevel[parents[1]][i].verticalLevel !=  this.DG.vertLevel.outEdgeVerticalLevel[parents[1]][i].verticalLevel)
+                    {
+                        result[i] = true;
+                        continue;
+                    }
+
                     var childHub = this.DG.GG.getRelationshipChildhub(i);
                     if (vertLevelsBefore.childEdgeLevel[childHub] != this.DG.vertLevel.childEdgeLevel[childHub]) {
                         result[i] = true;
