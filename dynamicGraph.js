@@ -2495,7 +2495,7 @@ Heuristics.prototype = {
                 noUpSet[v] = true;
                 var affectedInfo = this._findAffectedSet(shiftList, {}, noUpSet, {}, {}, shiftSize, xcoord, true, false, 5, 3, this.DG.ranks[v]);
 
-                // checking rnak to make sure we don't move relationships with higher ranks, which are supposedly well-positioned already
+                // need to check minAffectedRank to make sure we don't move relationships with lower ranks, which are supposedly well-positioned already
                 if (this._isShiftSizeAcceptable( affectedInfo, false, 5, 3) && affectedInfo.minAffectedRank > this.DG.ranks[v]) {
                     var nodes = affectedInfo.nodes;
                     //console.log("Middle-positioning relationship by [" + shiftSize + "]: " + stringifyObject(nodes));
@@ -2511,8 +2511,6 @@ Heuristics.prototype = {
         this.DG.positions = xcoord.xcoord;
 
         timer.printSinceLast("=== Improvement runtime: ");
-
-        var timer = new Timer();
 
         this.DG.vertLevel = this.DG.positionVertically();
         this.DG.rankY     = this.DG.computeRankY(ranksBefore, rankYBefore);
