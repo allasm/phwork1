@@ -123,6 +123,16 @@ function fromJSON (positionedGraph, redrawRenderTo) {
     return false;
 }
 
+function fromPED (positionedGraph, redrawRenderTo) {
+    var msg = prompt("Enter PED:");
+    console.log("Read: " + msg);
+
+    positionedGraph.fromPED(msg);
+
+    display_processed_graph(positionedGraph, redrawRenderTo);
+    return false;
+}
+
 function checkNodeId (element) {
     //console.log("zzz2");
 }
@@ -167,6 +177,7 @@ function display_controls(positionedGraph, controlRenderTo, redrawRenderTo) {
         <br>\
         <button onclick=\"showJSON(" + positionedGraph + ", " + str  + ")\" id=\"submitJSON\">To JSON</button>\
         <button onclick=\"fromJSON(" + positionedGraph + ", " + str  + ")\" id=\"readJSON\">From JSON</button>\
+        <button onclick=\"fromPED(" + positionedGraph + ", " + str  + ")\" id=\"readPED\">From PED</button>\
         <button onclick=\"showRaw(" + positionedGraph + ", " + str  + ")\" id=\"submitJSON\">Raw graph (for test case DB)</button>\
         <button onclick=\"clearAll(" + positionedGraph + ", " + str  + ")\" id=\"clear\">Clear</button>";
 }

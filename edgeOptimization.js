@@ -50,7 +50,7 @@ VerticalPosIntOptimizer.prototype = {
                 var intersects = crosses[j];
                 if (intersects > edge) {                  // because we want to only count each intersection only once, and score func is symmetrical
                     //console.log("[p] " + edge + " + " + intersects + " = " + this.pairScoreFunc( edge, intersects, levels[edge], levels[intersects] ));
-                    penalty += this.pairScoreFunc( edge, intersects, levels[edge], levels[intersects] );;
+                    penalty += this.pairScoreFunc( edge, intersects, levels[edge], levels[intersects] );
                     if (!isFinite(penalty))
                         return penalty;
                 }
@@ -63,6 +63,7 @@ VerticalPosIntOptimizer.prototype = {
         penalty += numLevelsPen;
         //console.log("num levels penalty: " + numLevelsPen);
 
+        //console.log("Score: " + penalty + " (numLevels: " + numLevelsPen + ")");  
         return penalty;
     },
 
@@ -220,11 +221,12 @@ VerticalPosIntOptimizer.prototype = {
     },
 
     //----------------------------------------------------------------------------------
-    exhaustiveSearch: function( componentID, bestSoFar ) {
-
+    exhaustiveSearch: function( componentID, bestSoFar ) {       
         var initScore = this.componentScoreFunc(bestSoFar, componentID)
 
         this.checkedNumber = 0; // TODO: debug
+        
+        //console.log("minPossiblePenalty: " + this.components.getMinPossiblePenalty(componentID));
 
         var result = this.recursiveExhaustiveSearch( componentID, bestSoFar.slice(0), 0, {"values":bestSoFar, "score":initScore} );
 
@@ -235,14 +237,18 @@ VerticalPosIntOptimizer.prototype = {
 
     recursiveExhaustiveSearch: function ( componentID, valuesSoFar, level, bestSoFar ) {
 
+        //debug
+        //for (var k = level; k < valuesSoFar.length; k++)
+        //    valuesSoFar[k] = undefined;
+        //console.log("level[" + level + "] Values: " + stringifyObject(valuesSoFar));
         //console.log("best value at enter [" + level + "]: " + stringifyObject(bestSoFar.values) + " (score: " + bestSoFar.score + ")");
-
+        
         var component = this.components.getComponentEdges(componentID);
 
         // reached the end of the recursion
-        if (level == component.length) {
-            //console.log("trying complete: " + stringifyObject(valuesSoFar));
+        if (level == component.length) {            
             var score = this.componentScoreFunc(valuesSoFar, componentID);
+            //console.log("SCORING: " + stringifyObject(valuesSoFar) + " -> Score: " + score );
             if (score < bestSoFar.score) {
                 bestSoFar.values = valuesSoFar.slice(0);
                 bestSoFar.score  = score;
@@ -252,7 +258,7 @@ VerticalPosIntOptimizer.prototype = {
             this.checkedNumber++; // TODO: debug
             return bestSoFar;
         }
-
+        
         var edge = component[level];
 
         // TODO: since we don't want any gaps in levels, a smarter search can be used which fills the gaps
@@ -270,7 +276,8 @@ VerticalPosIntOptimizer.prototype = {
         }
 
         for (var i = minValue; i <= maxValue; i++ ) {
-            valuesSoFar[edge] = i;
+            valuesSoFar[edge] = i;            
+            //console.log("Values[" + edge + "] = " + i);
 
             bestSoFar = this.recursiveExhaustiveSearch( componentID, valuesSoFar, level+1, bestSoFar );
 

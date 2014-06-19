@@ -1020,18 +1020,22 @@ DynamicPositionedGraph.prototype = {
     {
         var removedNodes = this._getAllNodes(1);  // all nodes from 1 and up
 
-        var node0properties = this.getProperties(0);
+        var emptyGraph = (this.DG.GG.getNumVertices() == 0);
+                
+        var node0properties = emptyGraph ? {} : this.getProperties(0);
 
         // it is easier to create abrand new graph transferirng node 0 propertie sthna to remove on-by-one
         // each time updating ranks, orders, etc
 
-        var baseGraph = BaseGraph.init_from_user_graph(this._onlyProbandGraph,
-                                                       this.DG.GG.defaultPersonNodeWidth, this.DG.GG.defaultNonPersonNodeWidth);
+        var baseGraph = PedigreeImport.initFromPhenotipsInternal(this._onlyProbandGraph);
 
         this._recreateUsingBaseGraph(baseGraph);
 
         this.setProperties(0, node0properties);
 
+        if (emptyGraph)
+            return {"new": [0], "makevisible": [0]};
+            
         return {"removed": removedNodes, "moved": [0], "makevisible": [0]};
     },
 
@@ -1072,16 +1076,39 @@ DynamicPositionedGraph.prototype = {
         return {"new": newList, "moved": movedNodes, "highlight": reRanked, "animate": animateList};
     },
 
+    // remove empty-values optional properties, e.g. "fName: ''" or "disorders: []"
+    stripUnusedProperties: function() {
+        for (var i = 0; i <= this.DG.GG.getMaxRealVertexId(); i++) {
+            if (this.isPerson(i)) {
+                this.deleteEmptyProperty(i, "fName");
+                this.deleteEmptyProperty(i, "lName");
+                this.deleteEmptyProperty(i, "gestationAge");
+                this.deleteEmptyProperty(i, "carrierStatus");
+                this.deleteEmptyProperty(i, "comments");
+                this.deleteEmptyProperty(i, "disorders");
+            }            
+         }
+    },
+    
+    deleteEmptyProperty: function(nodeID, propName) {        
+        if (this.DG.GG.properties[nodeID].hasOwnProperty(propName)) {
+            if (Object.prototype.toString.call(this.DG.GG.properties[nodeID][propName]) === '[object Array]' &&
+                this.DG.GG.properties[nodeID][propName].length == 0) {
+                delete this.DG.GG.properties[nodeID][propName];
+            } else if (this.DG.GG.properties[nodeID][propName] == "") { 
+                delete this.DG.GG.properties[nodeID][propName];
+            }
+        }
+    },
+    
     toJSON: function ()
     {
+        this.stripUnusedProperties();
+        
         //var timer = new Timer();
         var output = {};
-
-        // note: need to save GG not base G becaus eof the graph was dynamically modified
-        //       some new virtual edges may have different ID than if underlying G were
-        //       converted to GG (as during such a conversion ranks would be correctly
-        //       recomputed, but orders may mismatch). Thus to keep ordering valid need
-        //       to save GG and restore G from it on de-serialization
+        
+        // note: when saving positioned graph, need to save the version of the graph which has virtual edge pieces
         output["GG"] = this.DG.GG.serialize();
 
         output["ranks"]     = this.DG.ranks;
@@ -1100,13 +1127,11 @@ DynamicPositionedGraph.prototype = {
     {
         var removedNodes = this._getAllNodes();
 
-        serializedData = JSON.parse(serializedAsJSON);
+        var serializedData = JSON.parse(serializedAsJSON);
 
         //console.log("Got serialization object: " + stringifyObject(serializedData));
 
-        this.DG.GG = BaseGraph.init_from_user_graph(serializedData["GG"],
-                                                    this.DG.GG.defaultPersonNodeWidth, this.DG.GG.defaultNonPersonNodeWidth,
-                                                    true);
+        this.DG.GG = PedigreeImport.initFromPhenotipsInternal(serializedData["GG"]);
 
         this.DG.ranks = serializedData["ranks"];
 
@@ -1125,6 +1150,33 @@ DynamicPositionedGraph.prototype = {
         return {"new": newNodes, "removed": removedNodes};
     },
 
+    fromImport: function (importString, importType, importOptions)
+    {
+        var removedNodes = this._getAllNodes();
+
+        //this._debugPrintAll("before");
+
+        if (importType == "ped") {
+            var baseGraph = PedigreeImport.initFromPED(importString, importOptions.acceptUnknownPhenotypes, importOptions.markEvaluated);
+            if (!this._recreateUsingBaseGraph(baseGraph)) return null;  // no changes
+        } else if (importType == "gedcom") {
+            var baseGraph = PedigreeImport.initFromGEDCOM(importString, importOptions.markEvaluated);
+            if (!this._recreateUsingBaseGraph(baseGraph)) return null;  // no changes
+        } else if (importType == "simpleJSON") {
+            var baseGraph = PedigreeImport.initFromSimpleJSON(importString);
+            if (!this._recreateUsingBaseGraph(baseGraph)) return null;  // no changes            
+        }  else if (importType == "phenotipsJSON") {
+            
+            // TODO
+        }
+
+        //this._debugPrintAll("after");
+
+        var newNodes = this._getAllNodes();
+
+        return {"new": newNodes, "removed": removedNodes};
+    },
+
     getPathToParents: function(v)
     {
         // returns an array with two elements: path to parent1 (excluding v) and path to parent2 (excluding v):
@@ -1136,20 +1188,23 @@ DynamicPositionedGraph.prototype = {
 
     _recreateUsingBaseGraph: function (baseGraph)
     {
-        this.DG = new PositionedGraph( baseGraph,
-                                       this.DG.horizontalPersonSeparationDist,
-                                       this.DG.horizontalRelSeparationDist,
-                                       this.DG.maxInitOrderingBuckets,
-                                       this.DG.maxOrderingIterations,
-                                       this.DG.maxXcoordIterations );
+        try {
+            var newDG = new PositionedGraph( baseGraph,
+                                             this.DG.horizontalPersonSeparationDist,
+                                             this.DG.horizontalRelSeparationDist,
+                                             this.DG.maxInitOrderingBuckets,
+                                             this.DG.maxOrderingIterations,
+                                             this.DG.maxXcoordIterations );
+        } catch (e) {
+            return false;
+        }
 
+        this.DG          = newDG;
         this._heuristics = new Heuristics( this.DG );
 
-        this._debugPrintAll("before improvement");
-
+        //this._debugPrintAll("before improvement");
         this._heuristics.improvePositioning();
-
-        this._debugPrintAll("after improvement");
+        //this._debugPrintAll("after improvement");
 
         return true;
     },
