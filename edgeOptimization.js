@@ -50,7 +50,7 @@ VerticalPosIntOptimizer.prototype = {
                 var intersects = crosses[j];
                 if (intersects > edge) {                  // because we want to only count each intersection only once, and score func is symmetrical
                     //console.log("[p] " + edge + " + " + intersects + " = " + this.pairScoreFunc( edge, intersects, levels[edge], levels[intersects] ));
-                    penalty += this.pairScoreFunc( edge, intersects, levels[edge], levels[intersects] );
+                    penalty += this.pairScoreFunc( edge, intersects, levels[edge], levels[intersects], levels );
                     if (!isFinite(penalty))
                         return penalty;
                 }
@@ -63,7 +63,7 @@ VerticalPosIntOptimizer.prototype = {
         penalty += numLevelsPen;
         //console.log("num levels penalty: " + numLevelsPen);
 
-        //console.log("Score: " + penalty + " (numLevels: " + numLevelsPen + ")");  
+        //console.log("Score: " + penalty + " (numLevels: " + numLevelsPen + ")");
         return penalty;
     },
 
@@ -184,6 +184,7 @@ VerticalPosIntOptimizer.prototype = {
             components.addRequiredPenaltyToComponent(compID, penaltyForNumLevelsUsed);
         }
 
+        //console.log("Components: " + stringifyObject(components));
         return {"crosses": crosses, "components": components };
     },
 
@@ -221,11 +222,11 @@ VerticalPosIntOptimizer.prototype = {
     },
 
     //----------------------------------------------------------------------------------
-    exhaustiveSearch: function( componentID, bestSoFar ) {       
+    exhaustiveSearch: function( componentID, bestSoFar ) {
+
         var initScore = this.componentScoreFunc(bestSoFar, componentID)
 
-        this.checkedNumber = 0; // TODO: debug
-        
+        //this.checkedNumber = 0; // TODO: debug
         //console.log("minPossiblePenalty: " + this.components.getMinPossiblePenalty(componentID));
 
         var result = this.recursiveExhaustiveSearch( componentID, bestSoFar.slice(0), 0, {"values":bestSoFar, "score":initScore} );
@@ -237,16 +238,10 @@ VerticalPosIntOptimizer.prototype = {
 
     recursiveExhaustiveSearch: function ( componentID, valuesSoFar, level, bestSoFar ) {
 
-        //debug
-        //for (var k = level; k < valuesSoFar.length; k++)
-        //    valuesSoFar[k] = undefined;
-        //console.log("level[" + level + "] Values: " + stringifyObject(valuesSoFar));
-        //console.log("best value at enter [" + level + "]: " + stringifyObject(bestSoFar.values) + " (score: " + bestSoFar.score + ")");
-        
         var component = this.components.getComponentEdges(componentID);
 
         // reached the end of the recursion
-        if (level == component.length) {            
+        if (level == component.length) {
             var score = this.componentScoreFunc(valuesSoFar, componentID);
             //console.log("SCORING: " + stringifyObject(valuesSoFar) + " -> Score: " + score );
             if (score < bestSoFar.score) {
@@ -255,10 +250,10 @@ VerticalPosIntOptimizer.prototype = {
                 //console.log("[fsearch] New best: " + stringifyObject(bestSoFar.values) + " (score: " + bestSoFar.score + ")");
             }
             //console.log("best value at enter [" + level + "]: " + stringifyObject(valuesSoFar));
-            this.checkedNumber++; // TODO: debug
+            //this.checkedNumber++; // TODO: debug
             return bestSoFar;
         }
-        
+
         var edge = component[level];
 
         // TODO: since we don't want any gaps in levels, a smarter search can be used which fills the gaps
@@ -276,8 +271,7 @@ VerticalPosIntOptimizer.prototype = {
         }
 
         for (var i = minValue; i <= maxValue; i++ ) {
-            valuesSoFar[edge] = i;            
-            //console.log("Values[" + edge + "] = " + i);
+            valuesSoFar[edge] = i;
 
             bestSoFar = this.recursiveExhaustiveSearch( componentID, valuesSoFar, level+1, bestSoFar );
 
@@ -350,23 +344,31 @@ VerticalPosIntOptimizer.prototype = {
                 isBelowAll = true;       // if level == minLevel for the edge does not make sense to decrese the level
             }
         }
-        while (isAboveAll && isBelowAll);  // if both above lal and below all no sense to play with the edge; need to pick another edge
+        while (isAboveAll && isBelowAll);  // if both above all and below all no sense to play with the edge; need to pick another edge
 
         // pick new random level for the edge (different form the old value)
         var newLevel;
         do {
-            newLevel = Math.floor(this.random()*(maxUsedLevel + 2));   // value = [0...maxUsedLevel+1].
-        }                                                              // note: 0 is not a valid "level" but lets the edge to be
-                                                                       // positioned below any other (and later normalized to have proper minLevel)
-        while ( newLevel == oldLevel || (isBelowAll && newLevel < oldLevel) || (isAboveAll && newLevel > oldLevel) || forbidden.hasOwnProperty(newLevel));
+            // note: new level will be in the range = [0...maxUsedLevel+1]
+            // note: 0 is not a valid "level" but lets the edge to be
+            // positioned below any other (and later normalized to have proper minLevel)
+            newLevel = Math.floor(this.random()*(maxUsedLevel + 2));
+        }
+        while ( newLevel == oldLevel || (isBelowAll && newLevel < oldLevel) || (isAboveAll && newLevel > oldLevel));
 
+        if (forbidden.hasOwnProperty(newLevel)) {
+            for (var i = 0; i < component.length; i++) {
+                var e = component[i];
+                if (newState[e] <= newLevel) {
+                    newState[e]++;
+                }
+            }
+        }
+        newState[edge] = newLevel;
         //console.log("Edge: " + edge + ", oldLevel: " + oldLevel + ", newLevel: " + newLevel);
 
-        newState[edge] = newLevel;
-
         this.normalize(newState, component);
-
-        //console.log("computeNeighbour - final: " + stringifyObject(newState) + ", score: " + this.componentScoreFunc( newState, componentID ));
+        //console.log("computeNeighbour: " + stringifyObject(newState) + ", score: " + this.componentScoreFunc( newState, componentID ));
 
         return newState;
     },
@@ -378,14 +380,15 @@ VerticalPosIntOptimizer.prototype = {
         var usedLevels = filterUnique(levels).sort();
         for (var i = usedLevels.length-1; i > 0; i--) {
             if (usedLevels[i] != usedLevels[i-1] + 1) {      // there may be only one gap so no need to implement a more robust algorithm
-                for (var j = 0; j < levels.length; j++)
-                    if (levels[j] >= usedLevels[i])
-                        levels[j]--;
+                for (var j = 0; j < component.length; j++) {
+                    var e = component[j];
+                    if (levels[e] >= usedLevels[i])
+                        levels[e]--;
+                }
                 //console.log("found gap [" + usedLevels[i-1] + " - " + usedLevels[i] + "]");
                 break;
             }
         }
-
         //console.log("post fill gap levels: " + stringifyObject(levels));
 
         // 2. make sure all edges satisfy their min levels (including fixing 0 level)
@@ -403,7 +406,54 @@ VerticalPosIntOptimizer.prototype = {
             }
         }
 
+        // 3. try to minimize the highest used level
+        do {
+            var changed = false;
+            for (var i = 0; i < component.length; i++) {
+                var edge = component[i];
+                var curLevel = levels[edge];
+                var minLevel = this.minLevels ? this.minLevels[edge] : 1;
+                if (curLevel > minLevel) {
+                    var highestBelow = 0;
+                    for (var j = 0; j < this.crosses[edge].length; j++) {
+                        var level = levels[this.crosses[edge][j]];
+                        if (level < curLevel && level > highestBelow)
+                            highestBelow = levels[this.crosses[edge][j]];
+                    }
+                    if (highestBelow < curLevel - 1) {
+                        levels[edge] = highestBelow + 1;
+                    }
+                }
+            }
+        } while (changed);
+
         //console.log("post normalization: " + stringifyObject(levels));
+    },
+
+    localOptimization: function( levels, currentScore, componentID, untilFirstImprovement ) {
+        /*
+         * TODO: after improvements made to the main algorithm this heuristic may not be necessary,
+         *       but leaving it here for now as a placeholder
+         *
+        // tries to find a better position for just one edge using complete search
+        // (e.g. local not global optimization)
+
+        var component = this.components.getComponentEdges(componentID);
+        for (var e = 0; e < component.length; e++) {
+            var edge     = component[e];
+            var curLevel = levels[edge];
+            var minLevel = this.minLevels ? this.minLevels[edge] : 1;
+
+            var forbidden  = {};
+            for (var i = 0; i < this.crosses[edge].length; i++) {
+                var crossesWith = this.crosses[edge][i];
+                var crossLevel  = levels[crossesWith];
+                forbidden[crossLevel] = true;
+            }
+            // TODO
+        }
+        */
+        return currentScore;
     },
 
     random: function() {
@@ -413,28 +463,33 @@ VerticalPosIntOptimizer.prototype = {
         return x - Math.floor(x);
     },
 
-    doSwitchDuringAnneling: function ( oldScore, newScore, stepsLeft ) {
-        if (newScore < oldScore) return true;
+    doSwitchDuringAnneling: function ( oldScore, newScore, stepsSinceReset ) {
+        if (newScore <= oldScore) return true;
 
-        if (stepsLeft <= 5) return false;
+        var probability = Math.exp( -(newScore - oldScore) * Math.log((stepsSinceReset+1)*5) );
 
-        var probability = Math.exp( -(newScore - oldScore) / Math.log(stepsLeft/2) );
-
-        if (probability > this.random()) return true;
+        if (probability > this.random()) {
+            //console.log("[debug] switch to worse score");
+            return true;
+        }
         return false;
     },
 
     simulatedAnnellingOptimizer: function ( componentID, bestSoFar, maxSteps ) {
 
-        console.log("[asearch] Starting simulatedAnnellingOptimizer");
+        //console.log("[asearch] Starting simulatedAnnellingOptimizer");
 
         var bestScore = this.componentScoreFunc(bestSoFar, componentID);
 
         var bestState = isFinite(bestScore) ? bestSoFar : this.makeBasicValidAssignment(bestSoFar, componentID);
         var bestScore = isFinite(bestScore) ? bestScore : this.componentScoreFunc(bestState, componentID);
+        var bestStep  = maxSteps;
 
         var currentState = bestState;
         var currentScore = bestScore;
+
+        //console.log("Component: " + stringifyObject(this.components.getComponentEdges(componentID)) +
+        //            ", init score: " + bestScore + ", best possible score: " + this.components.getMinPossiblePenalty(componentID));
 
         // alogrithm (as in wiki):
         //-------------------------------------------
@@ -452,19 +507,23 @@ VerticalPosIntOptimizer.prototype = {
         //   k ← k + 1                                       // One more evaluation done
         // return sbest                                      // Return the best solution found.
 
+        var maxWrongDirection = maxSteps/6;
+
         var step = maxSteps;
         while (bestScore > this.components.getMinPossiblePenalty(componentID) && step >= 0) {
 
             // reset once in the middle of the search (TODO: investigate if we need more resets or don't need resets at all)
-            if (step == maxSteps/2 && currentScore > bestScore) {
-                currentState = bestState;
-                currentScore = bestScore;
+            if (step < bestStep - maxWrongDirection) {
+                currentState = bestState.slice(0);
+                currentScore = this.localOptimization(currentState, bestScore, componentID, true);  // restart from a slightly optimized last best point
+                bestStep     = step;
+                console.log("[asearch] reset to: " + stringifyObject(currentState) + ", score: " + currentScore + " (@ step = " + (maxSteps - step + 1) + ")");                
             }
 
             var neighbourState = this.computeNeighbour( currentState, componentID, step );
             var neighbourScore = this.componentScoreFunc( neighbourState, componentID );
 
-            if ( this.doSwitchDuringAnneling( currentScore, neighbourScore, step ) ) {
+            if ( this.doSwitchDuringAnneling( currentScore, neighbourScore, bestStep - step ) ) {
                 currentState = neighbourState;
                 currentScore = neighbourScore;
             }
@@ -473,10 +532,16 @@ VerticalPosIntOptimizer.prototype = {
                 console.log("[asearch] New best: " + stringifyObject(currentState) + ", score: " + currentScore + " (@ step = " + (maxSteps - step + 1) + ")");
                 bestState = currentState.slice(0);
                 bestScore = currentScore;
+                bestStep  = step;
             }
 
             step--;
         }
+
+        //bestState = [1, 2, 3, 5, 6, 7, 4, 6, 7, 4];
+        //bestScore = this.componentScoreFunc( bestState, componentID );
+        bestScore = this.localOptimization(bestState, bestScore, componentID);
+        console.log("[asearch] Final optimized best: " + stringifyObject(bestState) + ", score: " + bestScore);
 
         return bestState;
     }

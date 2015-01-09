@@ -880,7 +880,7 @@ var testCaseDatabase = {
                       {id: 76, prop: {gender: 'F'}, outedges: [{to: 75}]},
                       {id: 77, prop: {gender: 'M'}, outedges: [{to: 75}]}],
             "validate": { "maxCrossings": 1 },
-            "runTime":  { best: 676 }
+            "runTime":  { best: 680 }
           },
 
     "Rank1": { "comment": "a graph with two mid-level parentless nodes which should be ranked on the same\n\
@@ -904,7 +904,7 @@ var testCaseDatabase = {
             "runTime":  { best: 1 }
            },
 
-    "Rank2": { "comment": "two components connected by two multi-rank edges. One of those should be shortened.\n\
+    "Rank1b": { "comment": "two components connected by two multi-rank edges. One of those should be shortened.\n\
               (when edges have no weights the shorter m12 -> p3 edge should be shortened)\n\
               also all nodes with no parents should be ranked on the same level with their partners",
             "graph":   [{ name :'m11', outedges: [ {to: 'p1'} ], gender: "male" },
@@ -936,7 +936,7 @@ var testCaseDatabase = {
             "runTime":  { best: 7 }
            },
 
-    "Rank3": { "comment": "similar to Rank2, but m21->p6 edge has higher weight and will be shortened instead of m12->p3",
+    "Rank1c": { "comment": "similar to Rank2, but m21->p6 edge has higher weight and will be shortened instead of m12->p3",
             "graph":   [{ name :'m11', outedges: [ {to: 'p1'} ], gender: "male" },
                         { name :'f11', outedges: [ {to: 'p1'} ], gender: "female" },
                         { name :'m12', outedges: [ {to: 'p2'}, {to: 'p3'} ], gender: "male" },

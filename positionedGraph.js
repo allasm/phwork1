@@ -7,7 +7,8 @@ PositionedGraph = function( baseG,                          // mandatory, BaseGr
                             maxInitOrderingBuckets,         // optional,  int
                             maxOrderingIterations,          // optional,  int
                             maxXcoordIterations,            // optional,  int
-                            performVerticalPositioning )    // optional,  bool  (DynamicGraph does its own vertical positioning, so can save some time)
+                            performVerticalPositioning,     // optional,  bool  (DynamicGraph does its own vertical positioning, so can save some time)
+                            suggestedRanks )                // optional,  array[int] - ranks suggested for all nodes
 {
     this.GG = undefined;         // graph without any positioning info (of type BaseGraph);
                                  // same as baseG, but with multi-rank edges replaced by virtual vertices/edges
@@ -27,7 +28,8 @@ PositionedGraph = function( baseG,                          // mandatory, BaseGr
 
     this.initialize( baseG,
                      horizontalPersonSeparationDist, horizontalRelSeparationDist,
-                     maxInitOrderingBuckets, maxOrderingIterations, maxXcoordIterations, performVerticalPositioning );
+                     maxInitOrderingBuckets, maxOrderingIterations, maxXcoordIterations,
+                     performVerticalPositioning, suggestedRanks );
 };
 
 PositionedGraph.prototype = {
@@ -44,6 +46,7 @@ PositionedGraph.prototype = {
     yDistanceChildhubToNode:        14,
     yExtraPerHorizontalLine:         4,
     yAttachPortHeight:             1.5,
+    yCommentLineHeight:            2.5,
 
     initialize: function( baseG,
                           horizontalPersonSeparationDist,
@@ -51,7 +54,8 @@ PositionedGraph.prototype = {
                           maxInitOrderingBuckets,
                           maxOrderingIterations,
                           maxXcoordIterations,
-                          performVerticalPositioning )
+                          performVerticalPositioning,
+                          suggestedRanks )
     {
         if (horizontalPersonSeparationDist) this.horizontalPersonSeparationDist = horizontalPersonSeparationDist;
         if (horizontalRelSeparationDist)    this.horizontalRelSeparationDist    = horizontalRelSeparationDist;
@@ -65,7 +69,7 @@ PositionedGraph.prototype = {
         var timer = new Timer();
 
         // 1)
-        this.ranks = this.rank(baseG);
+        this.ranks = this.rank(baseG, suggestedRanks);
 
         this.maxRank = Math.max.apply(null, this.ranks);
 
@@ -124,8 +128,18 @@ PositionedGraph.prototype = {
     },
 
     //=[rank]============================================================================
-    rank: function (baseG)
+    rank: function (baseG, suggestedRanks)
     {
+        // use the suggested ranks, if available.
+        // Note: even if present, using suggested ranks may fail if inconsistencies are found
+        //       e.g. if a user drew a new "child" edge from a node to a node with a higher or equal rank
+        if (suggestedRanks) {
+            var ranks = this.init_rank(baseG, suggestedRanks);
+            if (ranks) {
+                return ranks;   // if suggested ranks are valid. if not ranks would be null
+            }
+        }
+
         // initial ranking via a spanning tree. Minimum rank == 1.
         var ranks = this.init_rank(baseG);
 
@@ -138,7 +152,7 @@ PositionedGraph.prototype = {
     },
 
     // init ranks by computing a spanning tree over the directed graph, starting from the nodes with no parents
-    init_rank: function (baseG)
+    init_rank: function (baseG, suggestedRanks)
     {
         //   Algorithm: nodes are placed in the queue when they have no unscanned in-edges.
         //   As nodes are taken off the queue, they are assigned the least rank
@@ -159,10 +173,29 @@ PositionedGraph.prototype = {
             numRankedParents.push(0);
         }
 
-        var parentlessNodes = baseG.getLeafAndParentlessNodes().parentlessNodes;
+        var queue = new Queue();         // holds non-ranked nodes which have all their parents already ranked
+        
+        if (suggestedRanks) {
+            for (var i = 0; i < suggestedRanks.length; i++) {
+                var nodesAtRank = suggestedRanks[i];
+                for (var j = 0; j < nodesAtRank.length; j++) {
+                    ranks[nodesAtRank[j]] = (i*3) + 1;
+                }
+            }
 
-        var queue = new Queue();
-        queue.setTo(parentlessNodes);
+            for (var v = 0; v < baseG.getNumVertices(); v++) {
+                if (baseG.isPerson(v) && ranks[v] == -1) {
+                    // a person node is without a rank => suggestedRanksa re bad
+                    return null;
+                }
+                if (baseG.isRelationship(v)) {
+                    queue.push(v);
+                }
+            }
+        } else {
+            var parentlessNodes = baseG.getLeafAndParentlessNodes().parentlessNodes;
+            queue.setTo(parentlessNodes);
+        }
 
         while ( queue.size() > 0 ) {
             var nextNode = queue.pop();
@@ -189,6 +222,13 @@ PositionedGraph.prototype = {
 
             for (var u = 0; u < outEdges.length; u++) {
                 var vertex = outEdges[u];
+
+                if (suggestedRanks && ranks[vertex] != -1) {
+                    if (ranks[vertex] <= ranks[nextNode]) {
+                        // suggested ranks are inconsistent
+                        return null;
+                    }
+                }
 
                 numRankedParents[vertex]++;
 
@@ -740,7 +780,7 @@ PositionedGraph.prototype = {
 
                 handled[twin] = true;
 
-                console.log("REMOVED TWIN " + twin);
+                //console.log("REMOVED TWIN " + twin);
             }
         }
 
@@ -1213,9 +1253,10 @@ PositionedGraph.prototype = {
         //   lowest priority: father not being on the left, mother notbeing on the right
         //                    (constant penalty for each case)
 
-        var totalEdgeLengthInPositions     = 0;
-        var totalEdgeLengthInChildren      = 0;
-        var totalEdgeLengthInFatherOnRight = 0;
+        var totalEdgeLengthInPositions   = 0;
+        var totalEdgeLengthInChildren    = 0;
+        var totalPenaltyForFatherOnRight = 0;  // penalty for not having father on the left/mother on the right
+        var totalPenaltyForChildAgeOrder = 0;  // penalty for not having children ordered by age
 
         for (var i = 0; i < this.GG.getNumVertices(); i++) {
 
@@ -1241,30 +1282,46 @@ PositionedGraph.prototype = {
                     var leftParent   = (order1 < order2) ? parents[0] : parents[1];
                     var genderOfLeft = this.GG.properties[leftParent]["gender"];
                     if (genderOfLeft == 'F')
-                        totalEdgeLengthInFatherOnRight++;
+                        totalPenaltyForFatherOnRight++;
                 }
             }
 
             if (this.GG.isChildhub(i)) {
                 // get the distance between the rightmost and leftmost child
                 var children = this.GG.getOutEdges(i);
-                if ( children.length > 0 ) {
-                    var minOrder = order.vOrder[children[0]];
-                    var maxOrder = minOrder;
-                    for (var j = 1; j < children.length; j++) {
-                        var ord = order.vOrder[children[j]];
-                        if ( ord > maxOrder ) maxOrder = ord;
-                        if ( ord < minOrder ) minOrder = ord;
+                if (children.length > 1) {
+                    var orderedChildren = order.sortByOrder(children);
+
+                    var minOrder = order.vOrder[orderedChildren[0]];
+                    var maxOrder = order.vOrder[orderedChildren[orderedChildren.length-1]];
+                    totalEdgeLengthInChildren += (maxOrder - minOrder);
+
+                    var leftChildDOB = this.GG.properties[orderedChildren[0]].hasOwnProperty("dob") ?
+                                       new Date(this.GG.properties[orderedChildren[0]]["dob"]) : null;
+                    for (var j = 1; j < orderedChildren.length; j++) {
+                        var thisChildDOB = this.GG.properties[orderedChildren[j]].hasOwnProperty("dob") ?
+                                           new Date(this.GG.properties[orderedChildren[j]]["dob"]) : null;
+
+                        if (thisChildDOB != null) {
+                            if (leftChildDOB == null) {
+                                // prefer all without date of birth to be on the right, i.e. penalty for no date on the left
+                                totalPenaltyForChildAgeOrder++;
+                            } else {
+                                // both are not null: compare dates
+                                if (leftChildDOB.getTime() > thisChildDOB.getTime()) {
+                                    // penalty for older child on the right
+                                    totalPenaltyForChildAgeOrder++;
+                                }
+                            }
+                        }
+                        leftChildDOB = thisChildDOB;
                     }
                 }
-                totalEdgeLengthInChildren += (maxOrder - minOrder);
-                //if (i == 25)
-                //console.log("lenInChildren: maxOrd = " + maxOrder + ", minOrd = " + minOrder + "  (children: " + stringifyObject(children) + ", order: " + stringifyObject(order.order[4]) + ")");
             }
         }
 
         //console.log("r = " + onlyRank + ", edgeLength = " + totalEdgeLengthInPositions + ", childLen = " + totalEdgeLengthInChildren);
-        return totalEdgeLengthInPositions*100000 + totalEdgeLengthInChildren*1000 + totalEdgeLengthInFatherOnRight;
+        return totalEdgeLengthInPositions*100000 + totalEdgeLengthInChildren*1000 + totalPenaltyForFatherOnRight*5 + totalPenaltyForChildAgeOrder;
     },
 
     edge_crossing: function(order, onlyRank, dontUseApproximationForRelationshipEdges)
@@ -2148,8 +2205,8 @@ PositionedGraph.prototype = {
 
     findConnectedComponent: function( v, edgeIncludedFunc, stopSet, maxSize )
     {
-        // computes connected component which includes vertex v and all vertices reachable from v
-        // not using edges which do not pass the `edgeIncludedFunc()` test
+        // computes connected component which includes vertex v (or all vertice sin array v)
+        // and all vertices reachable from v not using edges which do not pass the `edgeIncludedFunc()` test
         //
         // stops when a vertex from the `stopSet` set is found and includes `reachedStopSet` key in the response
         // stops when component size exceeds `maxSize`
@@ -2158,9 +2215,16 @@ PositionedGraph.prototype = {
         var size      = 0;
         var stopFound = false;
 
+        // if v is not an arrya make it an array with one element
+        if (Object.prototype.toString.call(v) !== '[object Array]') {
+            v = [v];
+        }
+
         var q = new Queue();
-        q.push(v);
-        component[v] = true;
+        for (var i = 0; i < v.length; i++) {
+            q.push(v[i]);
+            component[v[i]] = true;
+        }
 
         while( q.size() > 0 ) {
             var nextV = q.pop();
@@ -2207,7 +2271,7 @@ PositionedGraph.prototype = {
                 if (!this.GG.isPerson(v)) continue;
                 ancestors[v] = {};
                 ancestors[v][v] = 0;
-                if (this.GG.isAdopted(v)) continue; // TODO: assume adopted have no known parents
+                if (this.GG.isAdoptedIn(v)) continue; // TODO: assume adopted have no known parents
                 var parents = this.GG.getParents(v);
                 //console.log("v: " + v + ", parents: " + stringifyObject(parents));
                 for (var j = 0; j < parents.length; j++) {
@@ -2405,13 +2469,13 @@ PositionedGraph.prototype = {
             var optimizer = new VerticalPosIntOptimizer( pairScoreFunc, initLevels );
 
             // - full exhaustive search when up to 5 edges cross other edges on this rank
-            // - heuristic with up to 400 steps is used otherwise
+            // - heuristic with up to 600 steps is used otherwise
             //
             //   max full search running time: ~                 f(numEdgesThatCross) * scoreFuncTime  (*)
             //   max heuristic running time:   ~  bigC * numEdgesThatCross * numSteps * scoreFuncTime
             //
             //   (*) where f(numEdgesThatCross) is (currently) numEdgesThatCross^numEdgesThatCross, e.g. f(5) = 3125
-            var edgeLevels = optimizer.computeVerticalPositions( 5, 400 );
+            var edgeLevels = optimizer.computeVerticalPositions( 5, 600 );
 
             //console.log("[rank " + r + "] Final vertical childedge levels: " +  stringifyObject(edgeLevels));
 
@@ -2429,6 +2493,7 @@ PositionedGraph.prototype = {
 
             var initLevels = [];
             var edgeInfo   = [];
+            var relEdges   = {};
 
             var len = this.order.order[r].length;
             for (var i = 0; i < len; i++) {
@@ -2462,17 +2527,20 @@ PositionedGraph.prototype = {
                             var minLevel = (minOrder == maxOrder) ? 0 : 1;  // 0 if next to each other, 1 if at least anything inbetween
                             //console.log("v: " + v + "(" + vOrder[v] + "),  dest: " + dest +  "(" + vOrder[dest] + "), minOrder: " + minOrder + ", maxOrder: " + maxOrder);
                             var otherVirtualEdge = false;
+                            var goesOver         = [];
                             for (var o = minOrder; o < maxOrder; o++) {
                                 var w = this.order.order[r][o];
+                                if (this.GG.isPlaceholder(w))  { continue; }
                                 if (this.GG.isRelationship(w)) { minLevel = Math.max(minLevel, 2); }
                                 if (this.GG.isPerson(w))       { minLevel = Math.max(minLevel, 3); }
                                 if (this.GG.isVirtual(w) && this.GG.getInEdges(w)[0] != v) {
                                     otherVirtualEdge = true;
                                 }
+                                goesOver.push(w);
                             }
                             nextVerticalLevel = Math.max(nextVerticalLevel, minLevel);
                             //console.log("attaching ->" + dest + "(" + u + ") at attach port " + nextAttachPort + " and level " + nextVerticalLevel);
-                            verticalLevels.outEdgeVerticalLevel[v][u] = { attachlevel: nextAttachPort, verticalLevel: nextVerticalLevel };
+                            verticalLevels.outEdgeVerticalLevel[v][u] = { attachlevel: nextAttachPort, verticalLevel: nextVerticalLevel, numAttachLevels: edges.length };
 
                             //------------------------------
                             if (minLevel >= 2 || (minLevel == 1 && otherVirtualEdge) ) {
@@ -2497,8 +2565,11 @@ PositionedGraph.prototype = {
                                     }
                                 }
 
-                                edgeInfo.push( { "v": v, "u": u, "v_x": v_x, "left_x": left_x, "right_x": right_x, "down_x": down_x, "top_x": top_x} );
+                                edgeInfo.push( { "v": v, "u": u, "v_x": v_x, "left_x": left_x, "right_x": right_x, "down_x": down_x, "top_x": top_x, "over": goesOver } );
                                 initLevels.push(nextVerticalLevel);
+                                if (!relEdges.hasOwnProperty(u))
+                                    relEdges[u] = [];
+                                relEdges[u].push(edgeInfo.length-1);
                             }
                             //------------------------------
 
@@ -2521,9 +2592,21 @@ PositionedGraph.prototype = {
 
             if (edgeInfo.length > 1) {    // if at most one edge crosses other vertices - we know everything is already laid out perfectly
 
+                for (var e = 0; e < edgeInfo.length; e++) {
+                    if (!edgeInfo[e].hasOwnProperty("edgeComplement")) {
+                        var nextRel   = edgeInfo[e].u;
+                        var nextEdges = relEdges[nextRel];
+                        if (nextEdges.length > 1) {
+                            var otherEdge = (nextEdges[0] == e) ? nextEdges[1] : nextEdges[0];
+                            edgeInfo[e]["edgeComplement"]         = otherEdge;
+                            edgeInfo[otherEdge]["edgeComplement"] = e;
+                        }
+                    }
+                }
+
                 // compose the "crossing score" function which, given edgeInfo + which horizontal line is higher,
                 // can tell the number of crossings between two node-to-relationship edges
-                var pairScoreFunc = function( edge1, edge2, edge1level, edge2level ) {
+                var pairScoreFunc = function( edge1, edge2, edge1level, edge2level, levels ) {
                     //
                     // general form of a displayed edges is one of:
                     // (where the solid line is part of the edge and the dotted part is treated as a separate edge related to the other partner or some other node)
@@ -2591,20 +2674,34 @@ PositionedGraph.prototype = {
                     if (edgeInfo[edge2].top_x >= edgeInfo[edge1].left_x && edgeInfo[edge2].top_x <= edgeInfo[edge1].right_x)
                         extraIntersections++;
 
-                    // edges cross: upper edge's down_x crosses lower edge (0.5 because it will be counted twice for left/right edge)
-                    //if (edgeInfo[edge1].down_x >= edgeInfo[edge2].left_x && edgeInfo[edge1].down_x <= edgeInfo[edge2].right_x)
-                    //    extraIntersections += 0.5;
+                    // [edge1] ------\           /- - - - - [edge1-complement]
+                    //               |           |
+                    // [edge2] ------1-----------2-------
+                    //               |           |
+                    //               \___[rel]_ _/
+                    //                     |
+                    //
+                    // in a case like this, [rel] will be moved to a position above [edge2] and instead of
+                    // two intersection {1,2} there will be only one intersection of downward egge with edge2.
+                    // So if a case like this is detected we subtract 0.4 crossings from intersections 1 and 2
+                    // (and from minimum score as well) - as long as there is [edge1-complement]
+                    //
+                    if (edgeInfo[edge1].hasOwnProperty("edgeComplement") &&
+                        (!levels || levels[edgeInfo[edge1].edgeComplement] > edge2level)) {
+                        if (edgeInfo[edge1].down_x >= edgeInfo[edge2].left_x && edgeInfo[edge1].down_x <= edgeInfo[edge2].right_x)
+                            extraIntersections -= 0.4;
+                    }
 
                     return extraIntersections;
                 }
 
-                console.log("[rank " + r + "] Init vertical relatioship levels: " +  stringifyObject(initLevels));
+                //console.log("[rank " + r + "] Init vertical relatioship levels: " +  stringifyObject(initLevels));
 
                 var optimizer = new VerticalPosIntOptimizer( pairScoreFunc, initLevels, initLevels );  // init level == min level
 
                 var relEdgeLevels = optimizer.computeVerticalPositions( 5, 500 );
 
-                console.log("[rank " + r + "] Final vertical relatioship levels: " +  stringifyObject(relEdgeLevels));
+                //console.log("[rank " + r + "] Final vertical relatioship levels: " +  stringifyObject(relEdgeLevels));
 
                 numLevels = 0;
                 // place computed levels where they ultimately belong
@@ -2613,13 +2710,40 @@ PositionedGraph.prototype = {
                     if (relEdgeLevels[i] > numLevels)
                         numLevels = relEdgeLevels[i];
                 }
+
+                // optimize cases where an edge has rank > 1 because it supposedly goes over a relationship, but all
+                // relationships it goes over are raised because all their edges have higher levels.
+                // In such a case it looks beter when the edge in question is re-ranked back to rank 1
+                for (var i = 0; i < edgeInfo.length; i++) {
+                    // optimize cases where an edge has rank 2 (because it goes over a relationship), but all
+                    // relationships it goes over are raised => re-rank to rank 1
+                    var level = relEdgeLevels[i];
+                    if (level > 1) {
+                        var lowerLevel = true;
+                        for (var e = 0; e < edgeInfo[i].over.length; e++) {
+                            var w = edgeInfo[i].over[e];
+                            if (!this.GG.isRelationship(w)) {
+                                lowerLevel = false;
+                                break;
+                            }
+                            var parents = this.GG.getParents(w);
+                            if ( verticalLevels.outEdgeVerticalLevel[ parents[0] ][ w ].verticalLevel <= level ||
+                                 verticalLevels.outEdgeVerticalLevel[ parents[1] ][ w ].verticalLevel <= level ) {
+                                lowerLevel = false;
+                                break;
+                            }
+                        }
+                        if (lowerLevel)
+                            verticalLevels.outEdgeVerticalLevel[ edgeInfo[i].v ][ edgeInfo[i].u ].verticalLevel = 1;
+                    }
+                }
             }
 
             verticalLevels.rankVerticalLevels[r-1] += Math.max(0, (numLevels - 2));
         }
 
         //console.log("Vert child:         " + stringifyObject(verticalLevels.childEdgeLevel));
-        console.log("Vert relationships: " + stringifyObject(verticalLevels.outEdgeVerticalLevel));
+        //console.log("Vert relationships: " + stringifyObject(verticalLevels.outEdgeVerticalLevel));
         //console.log("Vert levels:        " + stringifyObject(verticalLevels.rankVerticalLevels));
 
         return verticalLevels;
@@ -2706,10 +2830,10 @@ PositionedGraph.prototype = {
             for (var j = i + 1; j <= allTwins.length; j++)
                 numEdgesAcross[j] += numRightOf;
 
-            console.log("after twin " + allTwins[i] + " (leftOf: " + numLeftOf + ", rightOf: " + numRightOf + ") -> edges across: " + stringifyObject(numEdgesAcross));
+            //console.log("after twin " + allTwins[i] + " (leftOf: " + numLeftOf + ", rightOf: " + numRightOf + ") -> edges across: " + stringifyObject(numEdgesAcross));
         }
 
-        console.log("twin penalties: " + stringifyObject(numEdgesAcross));
+        //console.log("twin penalties: " + stringifyObject(numEdgesAcross));
         var orderOfLeftMostTwin  = vOrder[allTwins[0]];
         var minEdgeCrossLocation = indexOfLastMinElementInArray(numEdgesAcross);   // (index == 0) => "insert before leftmost" => (order := orderOfLeftMostTwin)
 
@@ -2722,8 +2846,8 @@ PositionedGraph.prototype = {
                 order++;
         }
 
-        console.log("edges across: " + stringifyObject(numEdgesAcross));
-        console.log("BEST INSERT POSITION for a twin of " + v + " with edges to " + stringifyObject(insertedTwinRelationships) + " is " + order);
+        //console.log("edges across: " + stringifyObject(numEdgesAcross));
+        //console.log("BEST INSERT POSITION for a twin of " + v + " with edges to " + stringifyObject(insertedTwinRelationships) + " is " + order);
         return order;
     },
 
@@ -2732,7 +2856,7 @@ PositionedGraph.prototype = {
         var rankY = [0, 0];  // rank 0 is virtual, rank 1 starts at relative 0
 
         for ( var r = 2; r <= this.maxRank; r++ ) {
-            var yDistance = (this.GG.isChildhub(this.order.order[r][0])) ? this.yDistanceNodeToChildhub : this.yDistanceChildhubToNode;
+            var yDistance = (this.isChildhubRank(r)) ? this._computePersonRankHeight(r-1) : this.yDistanceChildhubToNode;
 
             // note: yExtraPerHorizontalLine * vertLevel.rankVerticalLevels[r] part comes from the idea that if there are many
             //       horizontal lines (childlines & relationship lines) between two ranks it is good to separate those ranks vertically
@@ -2753,6 +2877,62 @@ PositionedGraph.prototype = {
         }
 
         return rankY;
+    },
+
+    isChildhubRank: function(r)
+    {
+        for (var i = 0; i < this.order.order[r].length; i++) {
+            if (this.GG.isPerson(this.order.order[r][i]) ||
+                this.GG.isRelationship(this.order.order[r][i])) return false;
+            if (this.GG.isChildhub(this.order.order[r][i])) return true;
+        }
+    },
+
+    _computePersonRankHeight: function(r)
+    {
+        var height = this.yDistanceNodeToChildhub;
+
+        var maxNumLinesInComments = 0;
+        for (var i = 0; i < this.order.order[r].length; i++) {
+            if (this.GG.isPerson(this.order.order[r][i])) {
+                var person = this.order.order[r][i];
+                var numLabelLines = 0;
+                if (this.GG.properties[person].hasOwnProperty("comments")) {
+                    var comments = this.GG.properties[person].comments.replace(/^\s+|\s+$/g,'');
+                    // count number of new lines
+                    numLabelLines += ((comments.match(/\n/g) || []).length + 1);
+                }
+                var dob = this.GG.properties[person].hasOwnProperty("dob") ? new PedigreeDate(this.GG.properties[person].dob) : null;
+                var dod = this.GG.properties[person].hasOwnProperty("dod") ? new PedigreeDate(this.GG.properties[person].dod) : null;
+                if (dob !== null && dob.isComplete()) {
+                    numLabelLines++;
+                }
+                if (dod !== null && dod.isComplete()) {
+                    numLabelLines++;
+                }
+                // if both DOB and DOD is goven 2 lines are assumed. However this only happens
+                // when age is in years (and thus is displayed as e.g. "45 y")
+                if (dob !== null && dob.isComplete() && dod !== null && dod.isComplete()) {
+                    var age = getAge(dob, dod);
+                    if (age.length < 2 || age.indexOf(" y") < 0) {
+                        numLabelLines--;
+                    }
+                }
+                if (this.GG.properties[person].hasOwnProperty("lName") || this.GG.properties[person].hasOwnProperty("fName")) {
+                    numLabelLines++;
+                }
+                if (this.GG.properties[person].hasOwnProperty("externalID")) {
+                    numLabelLines++;
+                }                
+                if (numLabelLines > maxNumLinesInComments) {
+                    maxNumLinesInComments = numLabelLines;
+                }
+            }
+        }
+        if (maxNumLinesInComments > 4) {
+            height += (maxNumLinesInComments - 4)*this.yCommentLineHeight;
+        }
+        return height;
     },
 
     computeNodeY: function( rank, level )
@@ -3126,7 +3306,7 @@ PositionedGraph.prototype = {
 
         for (var e = 0; e < longEdges.length; ++e) {
             var chain = longEdges[e];
-            console.log("trying to straighten edge " + stringifyObject(chain));
+            //console.log("trying to straighten edge " + stringifyObject(chain));
 
             // 1) try to straighten by shifting the head
 
